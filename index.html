@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TaskFlow - 本地任务管理工具</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="bg-orb orb-1"></div>
+    <div class="bg-orb orb-2"></div>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="logo">TF</div>
+          <div>
+            <h1>TaskFlow</h1>
+            <p>本地任务管理</p>
+          </div>
+        </div>
+
+        <div class="sidebar-actions">
+          <button id="btn-new-project" class="btn btn-primary">+ 新建项目</button>
+          <button id="btn-new-task" class="btn">+ 新建任务</button>
+        </div>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>项目空间</h2>
+          </div>
+          <div id="project-list" class="project-list"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>数据管理</h2>
+          </div>
+          <div class="data-actions">
+            <button id="btn-export-json" class="btn">导出 JSON</button>
+            <button id="btn-export-csv" class="btn">导出 CSV</button>
+            <label class="btn file-btn">导入 JSON<input id="import-json" type="file" accept="application/json" /></label>
+            <label class="btn file-btn">恢复备份<input id="restore-json" type="file" accept="application/json" /></label>
+            <button id="btn-backup" class="btn">保存备份</button>
+          </div>
+        </section>
+
+        <div class="theme-row">
+          <label class="switch">
+            <input id="theme-toggle" type="checkbox" />
+            <span class="slider"></span>
+          </label>
+          <span>暗色模式</span>
+        </div>
+      </aside>
+
+      <main class="main-content">
+        <header class="topbar">
+          <div class="view-tabs">
+            <button class="tab active" data-view="list">列表</button>
+            <button class="tab" data-view="kanban">看板</button>
+            <button class="tab" data-view="calendar">日历</button>
+          </div>
+          <div class="filters">
+            <select id="filter-status">
+              <option value="all">全部状态</option>
+              <option value="open">未完成</option>
+              <option value="todo">待处理</option>
+              <option value="in_progress">进行中</option>
+              <option value="done">已完成</option>
+            </select>
+            <select id="filter-priority">
+              <option value="all">全部优先级</option>
+              <option value="high">高优先级</option>
+              <option value="medium">中优先级</option>
+              <option value="low">低优先级</option>
+            </select>
+            <input id="filter-tag" type="text" placeholder="标签筛选（如 bug）" />
+            <select id="filter-due">
+              <option value="all">全部截止日期</option>
+              <option value="overdue">已逾期</option>
+              <option value="today">今天到期</option>
+              <option value="week">7天内到期</option>
+            </select>
+            <input id="search-text" type="text" placeholder="搜索标题/描述" />
+          </div>
+        </header>
+
+        <section id="view-container" class="view-container"></section>
+      </main>
+
+      <aside class="detail-panel">
+        <div id="detail-empty" class="detail-empty">
+          <h3>详情面板</h3>
+          <p>选择任务或项目后可在这里查看与编辑详情。</p>
+        </div>
+        <div id="detail-content"></div>
+      </aside>
+    </div>
+
+    <dialog id="task-dialog" class="modal">
+      <form id="task-form" method="dialog" class="modal-body">
+        <h3 id="task-dialog-title">新建任务</h3>
+        <input type="hidden" id="task-id" />
+        <input type="hidden" id="task-parent-id" />
+        <label>标题*<input id="task-title" required maxlength="120" /></label>
+        <label>描述<textarea id="task-desc" rows="3"></textarea></label>
+        <label>所属项目<select id="task-project"></select></label>
+        <label>负责人<input id="task-assignee" placeholder="例如：Wen" /></label>
+        <div class="grid-2">
+          <label>状态
+            <select id="task-status">
+              <option value="todo">待处理</option>
+              <option value="in_progress">进行中</option>
+              <option value="done">已完成</option>
+            </select>
+          </label>
+          <label>优先级
+            <select id="task-priority">
+              <option value="medium">中</option>
+              <option value="high">高</option>
+              <option value="low">低</option>
+            </select>
+          </label>
+        </div>
+        <div class="grid-2">
+          <label>截止日期<input id="task-due" type="date" /></label>
+          <label>标签（逗号分隔）<input id="task-tags" placeholder="frontend,bug" /></label>
+        </div>
+        <label>附件路径/链接<input id="task-attachment" placeholder="/Users/me/file.pdf" /></label>
+        <div class="modal-actions">
+          <button type="button" class="btn" id="btn-cancel-task">取消</button>
+          <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="project-dialog" class="modal">
+      <form id="project-form" method="dialog" class="modal-body">
+        <h3 id="project-dialog-title">新建项目</h3>
+        <input type="hidden" id="project-id" />
+        <label>项目名*<input id="project-name" required maxlength="80" /></label>
+        <label>描述<textarea id="project-desc" rows="3"></textarea></label>
+        <label>封面色<input id="project-color" type="color" value="#2b8a78" /></label>
+        <div class="modal-actions">
+          <button type="button" class="btn" id="btn-cancel-project">取消</button>
+          <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+      </form>
+    </dialog>
+
+    <template id="task-row-template">
+      <article class="task-row" draggable="true"></article>
+    </template>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
