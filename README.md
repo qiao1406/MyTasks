@@ -1,30 +1,36 @@
-# TaskFlow (SQLite 多设备版)
+# TaskFlow
 
-## 1. 启动服务
+## 功能
+
+- 注册/登录/登出
+- 会话鉴权（Bearer Token）
+- 多用户数据隔离（每个用户独立任务数据）
+- 任务/项目功能保持可用
+
+## 启动
 
 ```bash
-cd /Users/wentao/Desktop/MyTasks
 node server.mjs
 ```
 
-启动后会监听：
-- `http://0.0.0.0:8787`
-
-数据库文件：
-- `/Users/wentao/Desktop/MyTasks/data/taskflow.db`
-
-## 2. 在浏览器访问
-
-本机访问：
+服务地址：
 - `http://localhost:8787`
 
-同一局域网其他设备访问（手机/平板/另一台电脑）：
-- `http://你的电脑局域网IP:8787`
+数据库文件：
+- `/data/taskflow.db`
 
-例如你的电脑 IP 是 `192.168.1.10`，则访问 `http://192.168.1.10:8787`。
+## 使用
 
-## 3. 说明
+1. 打开 `http://localhost:8787`
+2. 首次可直接注册（用户名 3-32 位字母/数字/下划线，密码 6-128 位）
+3. 注册成功会自动登录
+4. 不同账号登录后看到各自独立的任务数据
 
-- 不要再使用 `file:///.../index.html` 打开。
-- 所有任务会通过 `/api/state` 读写 SQLite。
-- 只要连接的是同一台运行服务的电脑，就能看到同一份任务数据。
+## API
+
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `GET /api/auth/me`
+- `POST /api/auth/logout`
+- `GET /api/state`
+- `PUT /api/state`
