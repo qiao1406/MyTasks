@@ -1,6 +1,7 @@
 (function () {
-  const STORAGE_KEY = "taskflow_data_v1"; // legacy localStorage key (migration fallback)
+  const STORAGE_KEY = "taskflow_data_v1";
   const THEME_KEY = "taskflow_theme";
+  const TOKEN_KEY = "taskflow_auth_token";
 
   const nowISO = () => new Date().toISOString();
   const uid = () => `id_${Math.random().toString(36).slice(2, 10)}_${Date.now().toString(36)}`;
@@ -20,8 +21,9 @@
     settings: {
       activeProjectId: defaultProjectId,
       currentView: "list",
+      expandedTaskIds: [],
       filters: {
-        status: "all",
+        status: "open",
         priority: "all",
         tag: "",
         due: "all",
@@ -34,8 +36,19 @@
   let selectedTaskId = null;
   let selectedProjectIdForDetail = null;
   let persistQueue = Promise.resolve();
+  let authToken = localStorage.getItem(TOKEN_KEY) || "";
+  let currentUser = null;
 
   const el = {
+    authScreen: document.getElementById("auth-screen"),
+    authUsername: document.getElementById("auth-username"),
+    authPassword: document.getElementById("auth-password"),
+    authMessage: document.getElementById("auth-message"),
+    btnLogin: document.getElementById("btn-login"),
+    btnRegister: document.getElementById("btn-register"),
+    currentUser: document.getElementById("current-user"),
+    btnLogout: document.getElementById("btn-logout"),
+
     projectList: document.getElementById("project-list"),
     viewContainer: document.getElementById("view-container"),
     detailEmpty: document.getElementById("detail-empty"),
@@ -84,6 +97,85 @@
     btnCancelProject: document.getElementById("btn-cancel-project"),
   };
 
+  function setAuthMessage(text, isError = false) {
+    el.authMessage.textContent = text || "";
+    el.authMessage.style.color = isError ? "var(--danger)" : "var(--muted)";
+  }
+
+  function setAuthScreenVisible(visible) {
+    el.authScreen.classList.toggle("active", visible);
+  }
+
+  function setCurrentUser(user) {
+    currentUser = user;
+    el.currentUser.textContent = user ? `当前用户: ${user.username}` : "未登录";
+  }
+
+  function clearAuth() {
+    authToken = "";
+    localStorage.removeItem(TOKEN_KEY);
+    setCurrentUser(null);
+    setAuthScreenVisible(true);
+  }
+
+  async function apiFetch(path, options = {}) {
+    const headers = {
+      ...(options.headers || {}),
+    };
+    if (authToken) headers.Authorization = `Bearer ${authToken}`;
+
+    const res = await fetch(path, {
+      ...options,
+      headers,
+    });
+
+    if (res.status === 401) {
+      clearAuth();
+      throw new Error("未登录或会话过期");
+    }
+
+    let body = null;
+    try {
+      body = await res.json();
+    } catch {
+      body = null;
+    }
+
+    if (!res.ok) {
+      throw new Error(body?.error || `请求失败(${res.status})`);
+    }
+
+    return body;
+  }
+
+  async function authRegister(username, password) {
+    return apiFetch("/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+  }
+
+  async function authLogin(username, password) {
+    return apiFetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+  }
+
+  async function authMe() {
+    return apiFetch("/api/auth/me", { method: "GET" });
+  }
+
+  async function authLogout() {
+    try {
+      await apiFetch("/api/auth/logout", { method: "POST" });
+    } catch {
+      // ignore
+    }
+  }
+
   function normalizeState(candidate) {
     if (!candidate || !Array.isArray(candidate.projects) || !Array.isArray(candidate.tasks)) {
       return structuredClone(initialState);
@@ -100,29 +192,39 @@
         },
       },
     };
+    if (!Array.isArray(normalized.settings.expandedTaskIds)) {
+      normalized.settings.expandedTaskIds = [];
+    }
     if (!normalized.projects.length) {
       normalized.projects = structuredClone(initialState.projects);
     }
     if (!normalized.settings.activeProjectId || !normalized.projects.some((p) => p.id === normalized.settings.activeProjectId)) {
       normalized.settings.activeProjectId = normalized.projects[0].id;
     }
+    const validStatuses = new Set(["all", "open", "todo", "done"]);
+    if (!validStatuses.has(normalized.settings.filters.status) || normalized.settings.filters.status === "all") {
+      normalized.settings.filters.status = "open";
+    }
+    normalized.tasks = normalized.tasks.map((task) => {
+      if (task.status === "in_progress") {
+        return { ...task, status: "todo" };
+      }
+      return task;
+    });
     return normalized;
   }
 
   async function fetchStateFromServer() {
-    const res = await fetch('/api/state', { cache: 'no-store' });
-    if (!res.ok) throw new Error(`Load failed: ${res.status}`);
-    const body = await res.json();
+    const body = await apiFetch("/api/state", { method: "GET" });
     return body?.state ? normalizeState(body.state) : null;
   }
 
   async function saveStateToServer(snapshot) {
-    const res = await fetch('/api/state', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+    await apiFetch("/api/state", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ state: snapshot }),
     });
-    if (!res.ok) throw new Error(`Save failed: ${res.status}`);
   }
 
   function saveState() {
@@ -151,6 +253,21 @@
     return t;
   }
 
+  function isTaskOverdue(task) {
+    if (!task?.dueDate) return false;
+    if (task.status === "done") return false;
+    const due = new Date(task.dueDate);
+    if (Number.isNaN(due.getTime())) return false;
+    due.setHours(0, 0, 0, 0);
+    return due < todayDateOnly();
+  }
+
+  function visualStatus(task) {
+    if (task.status === "done") return "done";
+    if (isTaskOverdue(task)) return "overdue";
+    return "todo";
+  }
+
   function taskById(id) {
     return state.tasks.find((t) => t.id === id);
   }
@@ -159,6 +276,17 @@
     return state.tasks
       .filter((t) => t.parentId === parentId)
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  }
+
+  function directSubtaskProgress(taskId) {
+    const subtasks = childrenOf(taskId);
+    if (!subtasks.length) return null;
+    const done = subtasks.filter((t) => t.status === "done").length;
+    return {
+      done,
+      total: subtasks.length,
+      ratio: Math.round((done / subtasks.length) * 100),
+    };
   }
 
   function projectById(id) {
@@ -229,9 +357,35 @@
   }
 
   function topLevelTasks(tasks) {
-    return tasks
-      .filter((t) => !t.parentId)
-      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    return sortTasksDoneLast(
+      tasks
+        .filter((t) => !t.parentId)
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    );
+  }
+
+  function sortTasksDoneLast(tasks) {
+    return [...tasks].sort((a, b) => {
+      const aDone = a.status === "done" ? 1 : 0;
+      const bDone = b.status === "done" ? 1 : 0;
+      if (aDone !== bDone) return aDone - bDone;
+      return (a.order ?? 0) - (b.order ?? 0);
+    });
+  }
+
+  function isExpanded(taskId) {
+    return state.settings.expandedTaskIds.includes(taskId);
+  }
+
+  function toggleExpand(taskId) {
+    const ids = state.settings.expandedTaskIds;
+    if (ids.includes(taskId)) {
+      state.settings.expandedTaskIds = ids.filter((id) => id !== taskId);
+    } else {
+      ids.push(taskId);
+    }
+    saveState();
+    renderAll();
   }
 
   function renderProjectList() {
@@ -262,25 +416,49 @@
   }
 
   function buildTaskRow(task, level = 0) {
+    const isTopLevel = level === 0;
+    const rowClass = isTopLevel ? "task-row task-top-level" : "task-row task-child-level";
     const row = document.createElement("article");
-    row.className = "task-row" + (level ? " indent" : "");
+    row.className = rowClass + (level ? " indent" : "");
     row.draggable = true;
     row.dataset.id = task.id;
     row.dataset.priority = task.priority;
+    row.dataset.visualStatus = visualStatus(task);
 
     const tags = (task.tags || []).map((x) => `<span class="tag">${escapeHtml(x)}</span>`).join("");
     const doneClass = task.status === "done" ? "done" : "";
+    const vStatus = visualStatus(task);
+    const statusText = vStatus === "overdue" ? "已延期" : labelStatus(task.status);
+
+    const progress = directSubtaskProgress(task.id);
+    const expanded = isExpanded(task.id);
+    const toggleText = expanded ? "点击这里收起子任务" : "点击这里展开子任务";
+    const progressBlock = progress
+      ? `
+      <div class="task-progress task-progress-toggle" data-action="toggle-children" title="${toggleText}">
+        <span class="task-progress-main">
+          <span class="task-expand-arrow ${expanded ? "expanded" : ""}">▸</span>
+          子任务进度 ${progress.done}/${progress.total}
+        </span>
+        <span class="task-progress-hint">${toggleText}</span>
+        <div class="task-progress-track"><div class="task-progress-fill" style="width:${progress.ratio}%"></div></div>
+      </div>
+    `
+      : "";
+    const childHint = !isTopLevel && progress ? `<span>下级子任务: ${progress.total}（请点开详情查看）</span>` : "";
 
     row.innerHTML = `
       <div class="task-head">
         <div class="task-title ${doneClass}">${escapeHtml(task.title)}</div>
-        <div class="small">${labelStatus(task.status)}</div>
+        <div class="small task-status-badge task-status-${vStatus}">${statusText}</div>
       </div>
       <div class="task-sub">
         <span>优先级: ${labelPriority(task.priority)}</span>
         <span>截止: ${formatDate(task.dueDate)}</span>
         <span>负责人: ${escapeHtml(task.assignee || "未分配")}</span>
+        ${childHint}
       </div>
+      ${progressBlock}
       ${tags ? `<div class="task-tags">${tags}</div>` : ""}
       <div class="task-actions">
         <button class="btn" data-action="toggle">${task.status === "done" ? "设为未完成" : "完成"}</button>
@@ -292,22 +470,29 @@
 
     row.addEventListener("click", (e) => {
       const btn = e.target.closest("button");
-      if (!btn) {
-        selectedTaskId = task.id;
-        selectedProjectIdForDetail = null;
-        renderDetail();
+      if (btn) {
+        const action = btn.dataset.action;
+        if (action === "toggle") {
+          toggleTask(task.id);
+        } else if (action === "subtask") {
+          openTaskDialog(null, task.id);
+        } else if (action === "edit") {
+          openTaskDialog(task.id);
+        } else if (action === "delete") {
+          deleteTask(task.id);
+        }
         return;
       }
-      const action = btn.dataset.action;
-      if (action === "toggle") {
-        toggleTask(task.id);
-      } else if (action === "subtask") {
-        openTaskDialog(null, task.id);
-      } else if (action === "edit") {
-        openTaskDialog(task.id);
-      } else if (action === "delete") {
-        deleteTask(task.id);
+
+      const progressToggle = e.target.closest('[data-action="toggle-children"]');
+      if (progressToggle) {
+        if (progress) toggleExpand(task.id);
+        return;
       }
+
+      selectedTaskId = task.id;
+      selectedProjectIdForDetail = null;
+      renderDetail();
     });
 
     wireTaskDragEvents(row);
@@ -324,13 +509,15 @@
       return root;
     }
 
-    function appendTree(task, level) {
-      root.appendChild(buildTaskRow(task, level));
-      const children = childrenOf(task.id).filter((c) => fTasks.some((x) => x.id === c.id));
-      children.forEach((c) => appendTree(c, level + 1));
-    }
+    top.forEach((t) => {
+      root.appendChild(buildTaskRow(t, 0));
+      if (!isExpanded(t.id)) return;
 
-    top.forEach((t) => appendTree(t, 0));
+      const firstLevelChildren = sortTasksDoneLast(childrenOf(t.id));
+      firstLevelChildren.forEach((c) => {
+        root.appendChild(buildTaskRow(c, 1));
+      });
+    });
     return root;
   }
 
@@ -341,7 +528,6 @@
 
     const cols = [
       ["todo", "待处理"],
-      ["in_progress", "进行中"],
       ["done", "已完成"],
     ];
 
@@ -435,7 +621,26 @@
       }
       el.detailEmpty.style.display = "none";
       const project = projectById(task.projectId);
+      const directChildren = childrenOf(task.id);
       const box = document.createElement("div");
+      const childList = directChildren.length
+        ? `
+          <div class="detail-block">
+            <h4>一级子任务</h4>
+            <div class="detail-subtasks">
+              ${directChildren
+                .map((sub) => {
+                  const deepCount = childrenOf(sub.id).length;
+                  return `<button class="detail-subtask-item" data-subtask-id="${sub.id}">
+                    <span>${escapeHtml(sub.title)}</span>
+                    <span class="small">${labelStatus(sub.status)}${deepCount ? ` · 下级 ${deepCount}` : ""}</span>
+                  </button>`;
+                })
+                .join("")}
+            </div>
+          </div>
+        `
+        : "";
       box.innerHTML = `
         <div class="detail-block">
           <h3>${escapeHtml(task.title)}</h3>
@@ -448,6 +653,7 @@
           <p><strong>标签:</strong> ${(task.tags || []).map(escapeHtml).join(", ") || "无"}</p>
           <p><strong>附件:</strong> ${task.attachment ? `<a href="${escapeHtml(task.attachment)}" target="_blank">${escapeHtml(task.attachment)}</a>` : "无"}</p>
         </div>
+        ${childList}
         <div class="detail-block">
           <button class="btn" id="d-edit-task">编辑任务</button>
           <button class="btn" id="d-subtask">添加子任务</button>
@@ -461,6 +667,15 @@
       document.getElementById("d-subtask").addEventListener("click", () => openTaskDialog(null, task.id));
       document.getElementById("d-toggle").addEventListener("click", () => toggleTask(task.id));
       document.getElementById("d-delete").addEventListener("click", () => deleteTask(task.id));
+      box.querySelectorAll(".detail-subtask-item").forEach((item) => {
+        item.addEventListener("click", () => {
+          const subtaskId = item.dataset.subtaskId;
+          if (!subtaskId) return;
+          selectedTaskId = subtaskId;
+          selectedProjectIdForDetail = null;
+          renderDetail();
+        });
+      });
       return;
     }
 
@@ -527,6 +742,55 @@
   function wireEvents() {
     el.btnNewProject.addEventListener("click", () => openProjectDialog());
     el.btnNewTask.addEventListener("click", () => openTaskDialog());
+
+    el.btnLogin.addEventListener("click", async () => {
+      const username = el.authUsername.value.trim();
+      const password = el.authPassword.value;
+      if (!username || !password) {
+        setAuthMessage("请输入用户名和密码", true);
+        return;
+      }
+      try {
+        setAuthMessage("登录中...");
+        const data = await authLogin(username, password);
+        authToken = data.token;
+        localStorage.setItem(TOKEN_KEY, authToken);
+        setCurrentUser(data.user);
+        setAuthScreenVisible(false);
+        setAuthMessage("");
+        await loadUserState();
+      } catch (err) {
+        setAuthMessage(err.message || "登录失败", true);
+      }
+    });
+
+    el.btnRegister.addEventListener("click", async () => {
+      const username = el.authUsername.value.trim();
+      const password = el.authPassword.value;
+      if (!username || !password) {
+        setAuthMessage("请输入用户名和密码", true);
+        return;
+      }
+      try {
+        setAuthMessage("注册中...");
+        const data = await authRegister(username, password);
+        authToken = data.token;
+        localStorage.setItem(TOKEN_KEY, authToken);
+        setCurrentUser(data.user);
+        setAuthScreenVisible(false);
+        setAuthMessage("");
+        await loadUserState();
+      } catch (err) {
+        setAuthMessage(err.message || "注册失败", true);
+      }
+    });
+
+    el.btnLogout.addEventListener("click", async () => {
+      await authLogout();
+      clearAuth();
+      state = normalizeState(initialState);
+      renderAll();
+    });
 
     document.querySelectorAll(".tab").forEach((tab) => {
       tab.addEventListener("click", () => {
@@ -890,7 +1154,7 @@
               id: tidMap.get(t.id),
               title: t.title || "未命名任务",
               description: t.description || "",
-              status: ["todo", "in_progress", "done"].includes(t.status) ? t.status : "todo",
+              status: ["todo", "done"].includes(t.status) ? t.status : "todo",
               priority: ["low", "medium", "high"].includes(t.priority) ? t.priority : "medium",
               dueDate: t.dueDate || null,
               projectId: pidMap.get(t.projectId) || state.settings.activeProjectId,
@@ -942,7 +1206,6 @@
 
   function labelStatus(status) {
     if (status === "todo") return "待处理";
-    if (status === "in_progress") return "进行中";
     if (status === "done") return "已完成";
     return status;
   }
@@ -954,51 +1217,53 @@
     return p;
   }
 
+  async function loadUserState() {
+    try {
+      const fromServer = await fetchStateFromServer();
+      if (fromServer) {
+        state = fromServer;
+      } else {
+        state = normalizeState(initialState);
+        saveState();
+      }
+    } catch {
+      state = normalizeState(initialState);
+    }
+
+    selectedTaskId = null;
+    selectedProjectIdForDetail = null;
+    refreshProjectOptions();
+    renderAll();
+  }
+
+  async function bootstrapAuth() {
+    if (!authToken) {
+      setAuthScreenVisible(true);
+      return;
+    }
+    try {
+      const data = await authMe();
+      setCurrentUser(data.user);
+      setAuthScreenVisible(false);
+      await loadUserState();
+    } catch {
+      clearAuth();
+    }
+  }
+
   async function bootstrap() {
     wireEvents();
     initTheme();
 
-    if (location.protocol === 'file:') {
-      alert('请不要使用 file:// 打开。请先启动数据库服务，再访问 http://你的电脑IP:8787');
+    if (location.protocol === "file:") {
+      alert("请不要使用 file:// 打开。请先启动数据库服务，再访问 http://你的电脑IP:8787");
       state = normalizeState(initialState);
       refreshProjectOptions();
       renderAll();
       return;
     }
 
-    try {
-      const fromServer = await fetchStateFromServer();
-      if (fromServer) {
-        state = fromServer;
-      } else {
-        const legacyRaw = localStorage.getItem(STORAGE_KEY);
-        if (legacyRaw) {
-          try {
-            state = normalizeState(JSON.parse(legacyRaw));
-          } catch {
-            state = normalizeState(initialState);
-          }
-        } else {
-          state = normalizeState(initialState);
-        }
-        saveState();
-      }
-    } catch {
-      alert('无法连接数据库服务，请确认 server.mjs 已启动。');
-      const legacyRaw = localStorage.getItem(STORAGE_KEY);
-      if (legacyRaw) {
-        try {
-          state = normalizeState(JSON.parse(legacyRaw));
-        } catch {
-          state = normalizeState(initialState);
-        }
-      } else {
-        state = normalizeState(initialState);
-      }
-    }
-
-    refreshProjectOptions();
-    renderAll();
+    await bootstrapAuth();
   }
 
   bootstrap();
