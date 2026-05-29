@@ -427,6 +427,17 @@ textarea {
   color: var(--muted);
 }
 
+.task-desc {
+  margin-top: 6px;
+  color: #6b7280;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.task-desc.done {
+  color: var(--muted);
+}
+
 .task-sub {
   margin-top: 8px;
   color: var(--muted);

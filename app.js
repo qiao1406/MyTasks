@@ -429,6 +429,7 @@
     const doneClass = task.status === "done" ? "done" : "";
     const vStatus = visualStatus(task);
     const statusText = vStatus === "overdue" ? "已延期" : labelStatus(task.status);
+    const desc = (task.description || "").trim();
 
     const progress = directSubtaskProgress(task.id);
     const expanded = isExpanded(task.id);
@@ -452,6 +453,7 @@
         <div class="task-title ${doneClass}">${escapeHtml(task.title)}</div>
         <div class="small task-status-badge task-status-${vStatus}">${statusText}</div>
       </div>
+      ${desc ? `<div class="task-desc ${doneClass}">${escapeHtml(desc)}</div>` : ""}
       <div class="task-sub">
         <span>优先级: ${labelPriority(task.priority)}</span>
         <span>截止: ${formatDate(task.dueDate)}</span>
