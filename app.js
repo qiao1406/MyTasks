@@ -56,6 +56,7 @@
 
     btnNewProject: document.getElementById("btn-new-project"),
     btnNewTask: document.getElementById("btn-new-task"),
+    btnWorkspaceAddTask: document.getElementById("btn-workspace-add-task"),
 
     filterStatus: document.getElementById("filter-status"),
     filterPriority: document.getElementById("filter-priority"),
@@ -744,6 +745,7 @@
   function wireEvents() {
     el.btnNewProject.addEventListener("click", () => openProjectDialog());
     el.btnNewTask.addEventListener("click", () => openTaskDialog());
+    el.btnWorkspaceAddTask.addEventListener("click", () => openTaskDialog());
 
     el.btnLogin.addEventListener("click", async () => {
       const username = el.authUsername.value.trim();

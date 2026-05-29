@@ -254,6 +254,7 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
 }
 
 .topbar {
@@ -331,6 +332,30 @@ textarea {
   padding: 14px;
   overflow: auto;
   height: 100%;
+}
+
+.workspace-add-btn {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  width: 46px;
+  height: 46px;
+  border: 1px solid color-mix(in srgb, var(--primary) 55%, var(--border));
+  border-radius: 999px;
+  background: linear-gradient(130deg, var(--primary), var(--primary-strong));
+  color: #fff;
+  font-size: 28px;
+  line-height: 1;
+  font-weight: 500;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 12px 24px rgba(15, 57, 44, 0.2);
+  cursor: pointer;
+  z-index: 5;
+}
+
+.workspace-add-btn:hover {
+  filter: brightness(1.05);
 }
 
 .task-row {
