@@ -85,7 +85,7 @@ export function createTaskService(deps) {
     const week = new Date(t0);
     week.setDate(week.getDate() + 7);
 
-    return state.tasks.filter((task) => {
+    const matched = state.tasks.filter((task) => {
       if (activeProjectId && task.projectId !== activeProjectId) return false;
 
       if (status !== "all") {
@@ -122,6 +122,24 @@ export function createTaskService(deps) {
 
       return true;
     });
+
+    // 标签筛选命中子任务时，同时保留祖先链，确保列表可展示匹配到的子任务。
+    if (!tag.trim() || !matched.length) return matched;
+
+    const byId = new Map(state.tasks.map((task) => [task.id, task]));
+    const visibleIds = new Set(matched.map((task) => task.id));
+
+    matched.forEach((task) => {
+      let cursor = task;
+      while (cursor.parentId) {
+        const parent = byId.get(cursor.parentId);
+        if (!parent) break;
+        visibleIds.add(parent.id);
+        cursor = parent;
+      }
+    });
+
+    return state.tasks.filter((task) => visibleIds.has(task.id));
   }
 
   /**

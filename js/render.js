@@ -193,6 +193,8 @@ export function createRenderer(deps) {
     const root = document.createElement("div");
     const filtered = taskService.filteredTasks();
     const top = taskService.topLevelTasks(filtered);
+    const visibleIds = new Set(filtered.map((task) => task.id));
+    const hasTagFilter = Boolean(getState().settings.filters.tag.trim());
 
     if (!top.length) {
       root.innerHTML = `<p class="small">暂无任务，点击左侧“新建任务”开始。</p>`;
@@ -203,7 +205,10 @@ export function createRenderer(deps) {
       root.appendChild(buildTaskRow(task, 0));
       if (!isExpanded(task.id)) return;
 
-      const firstLevelChildren = taskService.sortTasksDoneLast(taskService.childrenOf(task.id));
+      let firstLevelChildren = taskService.sortTasksDoneLast(taskService.childrenOf(task.id));
+      if (hasTagFilter) {
+        firstLevelChildren = firstLevelChildren.filter((child) => visibleIds.has(child.id));
+      }
       firstLevelChildren.forEach((child) => {
         root.appendChild(buildTaskRow(child, 1));
       });
