@@ -700,8 +700,28 @@ textarea {
   gap: 8px;
 }
 
-.indent {
+.task-row[data-level="1"] {
   margin-left: 18px;
+}
+
+.task-row[data-level="2"] {
+  margin-left: 36px;
+}
+
+.task-row[data-level="3"] {
+  margin-left: 54px;
+}
+
+.task-row[data-level="4"] {
+  margin-left: 72px;
+}
+
+.task-row[data-level="5"] {
+  margin-left: 90px;
+}
+
+.task-row[data-level="6"] {
+  margin-left: 108px;
 }
 
 .small {

@@ -102,9 +102,10 @@ export function createRenderer(deps) {
     const rowClass = isTopLevel ? "task-row task-top-level" : "task-row task-child-level";
     const row = document.createElement("article");
 
-    row.className = rowClass + (level ? " indent" : "");
+    row.className = rowClass;
     row.draggable = true;
     row.dataset.id = task.id;
+    row.dataset.level = String(level);
     row.dataset.priority = task.priority;
     row.dataset.visualStatus = visualStatus(task);
 
@@ -130,7 +131,7 @@ export function createRenderer(deps) {
     `
       : "";
 
-    const childHint = !isTopLevel && progress ? `<span>下级子任务: ${progress.total}（请点开详情查看）</span>` : "";
+    const childHint = !isTopLevel && progress ? `<span>下级子任务: ${progress.total}（可继续展开）</span>` : "";
 
     row.innerHTML = `
       <div class="task-head">
@@ -201,18 +202,24 @@ export function createRenderer(deps) {
       return root;
     }
 
-    top.forEach((task) => {
-      root.appendChild(buildTaskRow(task, 0));
+    /**
+     * 递归追加任务行；仅在节点展开时渲染其下级。
+     * @param {any} task
+     * @param {number} level
+     */
+    function appendTaskTree(task, level) {
+      root.appendChild(buildTaskRow(task, level));
       if (!isExpanded(task.id)) return;
 
-      let firstLevelChildren = taskService.sortTasksDoneLast(taskService.childrenOf(task.id));
+      let children = taskService.sortTasksDoneLast(taskService.childrenOf(task.id));
       if (hasTagFilter) {
-        firstLevelChildren = firstLevelChildren.filter((child) => visibleIds.has(child.id));
+        children = children.filter((child) => visibleIds.has(child.id));
       }
-      firstLevelChildren.forEach((child) => {
-        root.appendChild(buildTaskRow(child, 1));
-      });
-    });
+
+      children.forEach((child) => appendTaskTree(child, level + 1));
+    }
+
+    top.forEach((task) => appendTaskTree(task, 0));
 
     return root;
   }
