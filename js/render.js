@@ -102,9 +102,10 @@ export function createRenderer(deps) {
     const rowClass = isTopLevel ? "task-row task-top-level" : "task-row task-child-level";
     const row = document.createElement("article");
 
-    row.className = rowClass + (level ? " indent" : "");
+    row.className = rowClass;
     row.draggable = true;
     row.dataset.id = task.id;
+    row.dataset.level = String(level);
     row.dataset.priority = task.priority;
     row.dataset.visualStatus = visualStatus(task);
 
