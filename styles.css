@@ -537,6 +537,30 @@ textarea {
   font-weight: 600;
 }
 
+.task-progress-modes {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: 10px;
+  vertical-align: middle;
+}
+
+.task-progress-mode {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 3px 7px;
+}
+
+.task-progress-mode.active {
+  border-color: var(--primary);
+  color: var(--primary-strong);
+  background: color-mix(in srgb, var(--primary) 12%, var(--surface));
+  font-weight: 650;
+}
+
 .task-progress-main {
   display: inline-flex;
   align-items: center;
