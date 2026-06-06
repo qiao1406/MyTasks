@@ -40,6 +40,7 @@ const el = {
   filterTag: document.getElementById("filter-tag"),
   filterDue: document.getElementById("filter-due"),
   searchText: document.getElementById("search-text"),
+  subtaskExpandTabs: document.querySelectorAll(".subtask-expand-tab"),
 
   btnExportJson: document.getElementById("btn-export-json"),
   btnExportCsv: document.getElementById("btn-export-csv"),
@@ -401,6 +402,14 @@ function wireEvents() {
   document.querySelectorAll(".tab").forEach((tab) => {
     tab.addEventListener("click", () => {
       state.settings.currentView = tab.dataset.view;
+      saveState();
+      renderAll();
+    });
+  });
+
+  el.subtaskExpandTabs.forEach((tab) => {
+    tab.addEventListener("click", () => {
+      state.settings.subtaskExpandMode = tab.dataset.subtaskExpandMode;
       saveState();
       renderAll();
     });

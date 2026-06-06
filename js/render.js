@@ -205,13 +205,14 @@ export function createRenderer(deps) {
     const top = taskService.topLevelTasks(filtered);
     const visibleIds = new Set(filtered.map((task) => task.id));
     const hasTagFilter = Boolean(getState().settings.filters.tag.trim());
+    const subtaskExpandMode = getState().settings.subtaskExpandMode;
 
     if (!top.length) {
       root.innerHTML = `<p class="small">暂无任务，点击左侧“新建任务”开始。</p>`;
       return root;
     }
 
-    top.forEach((task) => appendTaskTree(root, task, 0, { hasTagFilter, visibleIds }));
+    top.forEach((task) => appendTaskTree(root, task, 0, { hasTagFilter, visibleIds, subtaskExpandMode }));
 
     return root;
   }
@@ -221,13 +222,16 @@ export function createRenderer(deps) {
    * @param {HTMLElement} root
    * @param {any} task
    * @param {number} level
-   * @param {{ hasTagFilter: boolean, visibleIds: Set<string> }} options
+   * @param {{ hasTagFilter: boolean, visibleIds: Set<string>, subtaskExpandMode: "all" | "open" }} options
    */
   function appendTaskTree(root, task, level, options) {
     root.appendChild(buildTaskRow(task, level));
     if (!isExpanded(task.id)) return;
 
     let children = taskService.sortTasksDoneLast(taskService.childrenOf(task.id));
+    if (options.subtaskExpandMode === "open") {
+      children = children.filter((child) => child.status !== "done");
+    }
     if (options.hasTagFilter) {
       children = children.filter((child) => options.visibleIds.has(child.id));
     }
@@ -243,6 +247,7 @@ export function createRenderer(deps) {
     const top = taskService.topLevelTasks(filtered);
     const visibleIds = new Set(filtered.map((task) => task.id));
     const hasTagFilter = Boolean(getState().settings.filters.tag.trim());
+    const subtaskExpandMode = getState().settings.subtaskExpandMode;
     const board = document.createElement("div");
     board.className = "kanban";
 
@@ -258,7 +263,7 @@ export function createRenderer(deps) {
       col.innerHTML = `<h4>${title}</h4>`;
 
       const items = top.filter((task) => task.status === status);
-      items.forEach((task) => appendTaskTree(col, task, 0, { hasTagFilter, visibleIds }));
+      items.forEach((task) => appendTaskTree(col, task, 0, { hasTagFilter, visibleIds, subtaskExpandMode }));
 
       if (!getDndKit()) {
         col.addEventListener("dragover", (event) => event.preventDefault());
@@ -466,6 +471,10 @@ export function createRenderer(deps) {
   function renderViewTabs() {
     document.querySelectorAll(".tab").forEach((tab) => {
       tab.classList.toggle("active", tab.dataset.view === getState().settings.currentView);
+    });
+
+    document.querySelectorAll(".subtask-expand-tab").forEach((tab) => {
+      tab.classList.toggle("active", tab.dataset.subtaskExpandMode === getState().settings.subtaskExpandMode);
     });
   }
 

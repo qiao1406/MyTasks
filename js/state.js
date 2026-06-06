@@ -21,6 +21,7 @@ export function createInitialState() {
       activeProjectId: defaultProjectId,
       currentView: "list",
       expandedTaskIds: [],
+      subtaskExpandMode: "all",
       filters: {
         status: "open",
         priority: "all",
@@ -58,6 +59,10 @@ export function normalizeState(candidate, initialState) {
 
   if (!Array.isArray(normalized.settings.expandedTaskIds)) {
     normalized.settings.expandedTaskIds = [];
+  }
+
+  if (!["all", "open"].includes(normalized.settings.subtaskExpandMode)) {
+    normalized.settings.subtaskExpandMode = initialState.settings.subtaskExpandMode;
   }
 
   if (!normalized.projects.length) {
