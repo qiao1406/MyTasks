@@ -211,33 +211,38 @@ export function createRenderer(deps) {
       return root;
     }
 
-    /**
-     * 递归追加任务行；仅在节点展开时渲染其下级。
-     * @param {any} task
-     * @param {number} level
-     */
-    function appendTaskTree(task, level) {
-      root.appendChild(buildTaskRow(task, level));
-      if (!isExpanded(task.id)) return;
-
-      let children = taskService.sortTasksDoneLast(taskService.childrenOf(task.id));
-      if (hasTagFilter) {
-        children = children.filter((child) => visibleIds.has(child.id));
-      }
-
-      children.forEach((child) => appendTaskTree(child, level + 1));
-    }
-
-    top.forEach((task) => appendTaskTree(task, 0));
+    top.forEach((task) => appendTaskTree(root, task, 0, { hasTagFilter, visibleIds }));
 
     return root;
+  }
+
+  /**
+   * 递归追加任务树；仅在节点展开时渲染其下级。
+   * @param {HTMLElement} root
+   * @param {any} task
+   * @param {number} level
+   * @param {{ hasTagFilter: boolean, visibleIds: Set<string> }} options
+   */
+  function appendTaskTree(root, task, level, options) {
+    root.appendChild(buildTaskRow(task, level));
+    if (!isExpanded(task.id)) return;
+
+    let children = taskService.sortTasksDoneLast(taskService.childrenOf(task.id));
+    if (options.hasTagFilter) {
+      children = children.filter((child) => options.visibleIds.has(child.id));
+    }
+
+    children.forEach((child) => appendTaskTree(root, child, level + 1, options));
   }
 
   /**
    * 渲染看板视图。
    */
   function renderKanbanView() {
-    const filteredTopLevelTasks = taskService.filteredTasks().filter((task) => !task.parentId);
+    const filtered = taskService.filteredTasks();
+    const top = taskService.topLevelTasks(filtered);
+    const visibleIds = new Set(filtered.map((task) => task.id));
+    const hasTagFilter = Boolean(getState().settings.filters.tag.trim());
     const board = document.createElement("div");
     board.className = "kanban";
 
@@ -252,8 +257,8 @@ export function createRenderer(deps) {
       col.dataset.status = status;
       col.innerHTML = `<h4>${title}</h4>`;
 
-      const items = filteredTopLevelTasks.filter((task) => task.status === status).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-      items.forEach((task) => col.appendChild(buildTaskRow(task, 0)));
+      const items = top.filter((task) => task.status === status);
+      items.forEach((task) => appendTaskTree(col, task, 0, { hasTagFilter, visibleIds }));
 
       if (!getDndKit()) {
         col.addEventListener("dragover", (event) => event.preventDefault());
