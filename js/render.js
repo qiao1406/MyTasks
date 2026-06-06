@@ -227,7 +227,7 @@ export function createRenderer(deps) {
     root.appendChild(buildTaskRow(task, level));
     if (!isExpanded(task.id)) return;
 
-    let children = taskService.sortTasksDoneLast(taskService.childrenOf(task.id));
+    let children = taskService.sortTasksDoneLast(taskService.childrenOf(task.id)).filter((child) => child.status !== "done");
     if (options.hasTagFilter) {
       children = children.filter((child) => options.visibleIds.has(child.id));
     }
