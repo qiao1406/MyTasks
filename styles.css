@@ -614,6 +614,10 @@ textarea {
 .detail-panel {
   padding: 14px;
   overflow: auto;
+  position: sticky;
+  top: 14px;
+  align-self: start;
+  max-height: calc(100vh - 28px);
 }
 
 .detail-empty h3 {
@@ -755,6 +759,8 @@ textarea {
 
   .detail-panel {
     grid-column: 1 / -1;
+    position: static;
+    max-height: none;
   }
 }
 
