@@ -69,6 +69,22 @@ export function createRenderer(deps) {
   }
 
   /**
+   * 设置单个任务展开子任务时的显示范围，并确保它处于展开状态。
+   * @param {string} taskId
+   * @param {"all" | "open"} mode
+   */
+  function setSubtaskExpandMode(taskId, mode) {
+    const state = getState();
+    if (!state.settings.subtaskExpandModes) state.settings.subtaskExpandModes = {};
+    state.settings.subtaskExpandModes[taskId] = mode;
+    if (!state.settings.expandedTaskIds.includes(taskId)) {
+      state.settings.expandedTaskIds.push(taskId);
+    }
+    saveState();
+    renderAll();
+  }
+
+  /**
    * 渲染左侧项目列表。
    */
   function renderProjectList() {
@@ -126,6 +142,7 @@ export function createRenderer(deps) {
 
     const progress = taskService.directSubtaskProgress(task.id);
     const expanded = isExpanded(task.id);
+    const subtaskExpandMode = getState().settings.subtaskExpandModes?.[task.id] || "all";
     const toggleText = expanded ? "点击这里收起子任务" : "点击这里展开子任务";
     const progressBlock = progress
       ? `
@@ -135,6 +152,10 @@ export function createRenderer(deps) {
           子任务进度 ${progress.done}/${progress.total}
         </span>
         <span class="task-progress-hint">${toggleText}</span>
+        <div class="task-progress-modes" aria-label="子任务展开范围">
+          <button class="task-progress-mode ${subtaskExpandMode === "all" ? "active" : ""}" type="button" data-action="expand-mode" data-expand-mode="all">展开所有</button>
+          <button class="task-progress-mode ${subtaskExpandMode === "open" ? "active" : ""}" type="button" data-action="expand-mode" data-expand-mode="open">只展开未完成</button>
+        </div>
         <div class="task-progress-track"><div class="task-progress-fill" style="width:${progress.ratio}%"></div></div>
       </div>
     `
@@ -177,6 +198,8 @@ export function createRenderer(deps) {
           openTaskDialog(task.id);
         } else if (action === "delete") {
           onDeleteTask(task.id);
+        } else if (action === "expand-mode") {
+          setSubtaskExpandMode(task.id, button.dataset.expandMode === "open" ? "open" : "all");
         }
         return;
       }
@@ -228,6 +251,9 @@ export function createRenderer(deps) {
     if (!isExpanded(task.id)) return;
 
     let children = taskService.sortTasksDoneLast(taskService.childrenOf(task.id));
+    if ((getState().settings.subtaskExpandModes?.[task.id] || "all") === "open") {
+      children = children.filter((child) => child.status !== "done");
+    }
     if (options.hasTagFilter) {
       children = children.filter((child) => options.visibleIds.has(child.id));
     }
