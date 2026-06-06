@@ -34,6 +34,15 @@ export function createRenderer(deps) {
     onDeleteProject,
     renderAll,
   } = deps;
+  let cleanupDnd = null;
+  let activeDragId = null;
+  let activeOverId = null;
+
+  const getDndKit = () => {
+    const dndKit = window.DndKitDom;
+    if (!dndKit?.DragDropManager || !dndKit?.Draggable || !dndKit?.Droppable) return null;
+    return dndKit;
+  };
 
   /**
    * 判断任务节点是否处于展开状态。
@@ -103,7 +112,7 @@ export function createRenderer(deps) {
     const row = document.createElement("article");
 
     row.className = rowClass;
-    row.draggable = true;
+    row.draggable = !getDndKit();
     row.dataset.id = task.id;
     row.dataset.level = String(level);
     row.dataset.priority = task.priority;
@@ -183,7 +192,7 @@ export function createRenderer(deps) {
       renderDetail();
     });
 
-    wireTaskDragEvents(row);
+    wireFallbackTaskDragEvents(row);
     return row;
   }
 
@@ -246,17 +255,14 @@ export function createRenderer(deps) {
       const items = filteredTopLevelTasks.filter((task) => task.status === status).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
       items.forEach((task) => col.appendChild(buildTaskRow(task, 0)));
 
-      col.addEventListener("dragover", (event) => event.preventDefault());
-      col.addEventListener("drop", (event) => {
-        event.preventDefault();
-        const taskId = event.dataTransfer.getData("text/plain");
-        const task = taskService.taskById(taskId);
-        if (!task) return;
-        task.status = status;
-        task.updatedAt = nowISO();
-        saveState();
-        renderAll();
-      });
+      if (!getDndKit()) {
+        col.addEventListener("dragover", (event) => event.preventDefault());
+        col.addEventListener("drop", (event) => {
+          event.preventDefault();
+          const taskId = event.dataTransfer.getData("text/plain");
+          if (taskService.updateTaskStatus(taskId, status)) renderAll();
+        });
+      }
 
       board.appendChild(col);
     });
@@ -470,18 +476,22 @@ export function createRenderer(deps) {
    * 汇总渲染入口：刷新项目列表、顶部、主视图和详情。
    */
   function renderEverything() {
+    destroyDnd();
     renderProjectList();
     renderViewTabs();
     syncFilterControls();
     renderView();
     renderDetail();
+    setupDnd();
   }
 
   /**
-   * 绑定任务拖拽事件，实现列表/看板排序。
+   * 绑定原生拖拽兜底逻辑，实现列表/看板排序。
    * @param {HTMLElement} row
    */
-  function wireTaskDragEvents(row) {
+  function wireFallbackTaskDragEvents(row) {
+    if (getDndKit()) return;
+
     row.addEventListener("dragstart", (event) => {
       row.classList.add("dragging");
       event.dataTransfer.setData("text/plain", row.dataset.id);
@@ -497,6 +507,98 @@ export function createRenderer(deps) {
       taskService.reorderTask(draggedId, targetId);
       renderAll();
     });
+  }
+
+  /**
+   * 清理上一次渲染注册的 dnd-kit 管理器。
+   */
+  function destroyDnd() {
+    if (typeof cleanupDnd === "function") cleanupDnd();
+    cleanupDnd = null;
+    activeDragId = null;
+    activeOverId = null;
+  }
+
+  /**
+   * 设置 dnd-kit 拖拽：拖到任务卡片上时，将源任务设为目标任务的子任务。
+   */
+  function setupDnd() {
+    const dndKit = getDndKit();
+    const rows = [...el.viewContainer.querySelectorAll(".task-row[data-id]")];
+    if (!dndKit || !rows.length) return;
+
+    const manager = new dndKit.DragDropManager();
+    const clearDropTarget = () => {
+      rows.forEach((row) => row.classList.remove("drop-as-subtask"));
+      activeOverId = null;
+    };
+
+    manager.monitor.addEventListener("dragstart", (event) => {
+      activeDragId = String(event.operation.source.id);
+      clearDropTarget();
+      const activeRow = el.viewContainer.querySelector(`.task-row[data-id="${CSS.escape(activeDragId)}"]`);
+      activeRow?.classList.add("dragging");
+    });
+
+    manager.monitor.addEventListener("dragover", (event) => {
+      const overId = event.operation.target ? String(event.operation.target.id) : null;
+      if (activeOverId === overId) return;
+      clearDropTarget();
+      activeOverId = overId;
+
+      if (activeDragId && overId && activeDragId !== overId) {
+        const overRow = el.viewContainer.querySelector(`.task-row[data-id="${CSS.escape(overId)}"]`);
+        overRow?.classList.add("drop-as-subtask");
+      }
+    });
+
+    manager.monitor.addEventListener("dragend", (event) => {
+      const draggedId = String(event.operation.source.id);
+      const targetId = event.operation.target ? String(event.operation.target.id) : null;
+      cleanupDragStyles(rows);
+
+      if (!event.canceled && targetId && draggedId !== targetId && taskService.moveTaskUnderParent(draggedId, targetId)) {
+        setSelectedTaskId(draggedId);
+        setSelectedProjectIdForDetail(null);
+        const state = getState();
+        if (!state.settings.expandedTaskIds.includes(targetId)) state.settings.expandedTaskIds.push(targetId);
+        saveState();
+        renderAll();
+      }
+    });
+
+    rows.forEach((row) => {
+      row.draggable = false;
+      new dndKit.Draggable(
+        {
+          id: row.dataset.id,
+          element: row,
+          type: "task",
+        },
+        manager
+      );
+      new dndKit.Droppable(
+        {
+          id: row.dataset.id,
+          element: row,
+          accept: "task",
+          collisionPriority: Number(row.dataset.level || 0) + 1,
+        },
+        manager
+      );
+    });
+
+    cleanupDnd = () => manager.destroy();
+  }
+
+  /**
+   * 清理拖拽中的视觉状态。
+   * @param {HTMLElement[]} rows
+   */
+  function cleanupDragStyles(rows) {
+    rows.forEach((row) => row.classList.remove("dragging", "drop-as-subtask"));
+    activeDragId = null;
+    activeOverId = null;
   }
 
   return {

@@ -359,6 +359,46 @@ export function createTaskService(deps) {
     return true;
   }
 
+  /**
+   * 将一个任务移动到另一个任务下，成为其子任务。
+   * @param {string} draggedId
+   * @param {string} targetId
+   * @returns {boolean}
+   */
+  function moveTaskUnderParent(draggedId, targetId) {
+    const state = getState();
+    const dragged = taskById(draggedId);
+    const target = taskById(targetId);
+    if (!dragged || !target || dragged.id === target.id) return false;
+
+    const draggedDescendants = collectDescendants(dragged.id);
+    if (draggedDescendants.has(target.id)) return false;
+
+    const nextOrder = state.tasks.filter((task) => task.projectId === target.projectId && task.parentId === target.id).length;
+    dragged.parentId = target.id;
+    dragged.projectId = target.projectId;
+    dragged.order = nextOrder;
+    dragged.updatedAt = nowISO();
+
+    saveState();
+    return true;
+  }
+
+  /**
+   * 更新任务状态。
+   * @param {string} taskId
+   * @param {"todo" | "done"} status
+   * @returns {boolean}
+   */
+  function updateTaskStatus(taskId, status) {
+    const task = taskById(taskId);
+    if (!task || !["todo", "done"].includes(status)) return false;
+    task.status = status;
+    task.updatedAt = nowISO();
+    saveState();
+    return true;
+  }
+
   return {
     taskById,
     childrenOf,
@@ -374,6 +414,8 @@ export function createTaskService(deps) {
     upsertProject,
     deleteProject,
     reorderTask,
+    moveTaskUnderParent,
+    updateTaskStatus,
     collectDescendants,
   };
 }
