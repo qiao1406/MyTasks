@@ -328,6 +328,14 @@ textarea {
   min-width: 180px;
 }
 
+#sort-top-level-by {
+  min-width: 132px;
+}
+
+#sort-top-level-direction {
+  min-width: 92px;
+}
+
 .view-container {
   padding: 14px;
   overflow: auto;
