@@ -34,15 +34,7 @@ export function createRenderer(deps) {
     onDeleteProject,
     renderAll,
   } = deps;
-  let cleanupDnd = null;
   let activeDragId = null;
-  let activeOverId = null;
-
-  const getDndKit = () => {
-    const dndKit = window.DndKitDom;
-    if (!dndKit?.DragDropManager || !dndKit?.Draggable || !dndKit?.Droppable) return null;
-    return dndKit;
-  };
 
   /**
    * 判断任务节点是否处于展开状态。
@@ -128,7 +120,7 @@ export function createRenderer(deps) {
     const row = document.createElement("article");
 
     row.className = rowClass;
-    row.draggable = !getDndKit();
+    row.draggable = true;
     row.dataset.id = task.id;
     row.dataset.level = String(level);
     row.dataset.priority = task.priority;
@@ -286,14 +278,15 @@ export function createRenderer(deps) {
       const items = top.filter((task) => task.status === status);
       items.forEach((task) => appendTaskTree(col, task, 0, { hasTagFilter, visibleIds }));
 
-      if (!getDndKit()) {
-        col.addEventListener("dragover", (event) => event.preventDefault());
-        col.addEventListener("drop", (event) => {
-          event.preventDefault();
-          const taskId = event.dataTransfer.getData("text/plain");
-          if (taskService.updateTaskStatus(taskId, status)) renderAll();
-        });
-      }
+      col.addEventListener("dragover", (event) => {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+      });
+      col.addEventListener("drop", (event) => {
+        event.preventDefault();
+        const taskId = event.dataTransfer.getData("text/plain");
+        if (taskService.updateTaskStatus(taskId, status)) renderAll();
+      });
 
       board.appendChild(col);
     });
@@ -507,129 +500,88 @@ export function createRenderer(deps) {
    * 汇总渲染入口：刷新项目列表、顶部、主视图和详情。
    */
   function renderEverything() {
-    destroyDnd();
     renderProjectList();
     renderViewTabs();
     syncFilterControls();
     renderView();
     renderDetail();
-    setupDnd();
   }
 
   /**
-   * 绑定原生拖拽兜底逻辑，实现列表/看板排序。
+   * 绑定原生鼠标拖拽逻辑，实现列表/看板中的任务排序。
    * @param {HTMLElement} row
    */
   function wireFallbackTaskDragEvents(row) {
-    if (getDndKit()) return;
-
     row.addEventListener("dragstart", (event) => {
+      activeDragId = row.dataset.id;
       row.classList.add("dragging");
+      event.dataTransfer.effectAllowed = "move";
       event.dataTransfer.setData("text/plain", row.dataset.id);
     });
 
-    row.addEventListener("dragend", () => row.classList.remove("dragging"));
-    row.addEventListener("dragover", (event) => event.preventDefault());
+    row.addEventListener("dragend", () => cleanupDragStyles());
+    row.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      event.dataTransfer.dropEffect = "move";
+      markDropPosition(row, getTaskDropPosition(event, row));
+    });
+    row.addEventListener("dragleave", (event) => {
+      if (!row.contains(event.relatedTarget)) {
+        row.classList.remove("drop-before", "drop-after");
+      }
+    });
     row.addEventListener("drop", (event) => {
       event.preventDefault();
+      event.stopPropagation();
       const draggedId = event.dataTransfer.getData("text/plain");
       const targetId = row.dataset.id;
+      const position = getTaskDropPosition(event, row);
+      cleanupDragStyles();
       if (!draggedId || draggedId === targetId) return;
-      taskService.reorderTask(draggedId, targetId);
-      renderAll();
+      if (taskService.reorderTask(draggedId, targetId, position)) renderAll();
     });
   }
 
   /**
-   * 清理上一次渲染注册的 dnd-kit 管理器。
+   * 根据鼠标落点判断拖拽任务插到目标任务前还是后。
+   * @param {DragEvent} event
+   * @param {HTMLElement} row
+   * @returns {"before" | "after"}
    */
-  function destroyDnd() {
-    if (typeof cleanupDnd === "function") cleanupDnd();
-    cleanupDnd = null;
-    activeDragId = null;
-    activeOverId = null;
+  function getTaskDropPosition(event, row) {
+    const rect = row.getBoundingClientRect();
+    return event.clientY < rect.top + rect.height / 2 ? "before" : "after";
   }
 
   /**
-   * 设置 dnd-kit 拖拽：拖到任务卡片上时，将源任务设为目标任务的子任务。
+   * 标记当前插入方向，让用户看到松开鼠标后的排序位置。
+   * @param {HTMLElement} row
+   * @param {"before" | "after"} position
    */
-  function setupDnd() {
-    const dndKit = getDndKit();
-    const rows = [...el.viewContainer.querySelectorAll(".task-row[data-id]")];
-    if (!dndKit || !rows.length) return;
-
-    const manager = new dndKit.DragDropManager();
-    const clearDropTarget = () => {
-      rows.forEach((row) => row.classList.remove("drop-as-subtask"));
-      activeOverId = null;
-    };
-
-    manager.monitor.addEventListener("dragstart", (event) => {
-      activeDragId = String(event.operation.source.id);
-      clearDropTarget();
-      const activeRow = el.viewContainer.querySelector(`.task-row[data-id="${CSS.escape(activeDragId)}"]`);
-      activeRow?.classList.add("dragging");
-    });
-
-    manager.monitor.addEventListener("dragover", (event) => {
-      const overId = event.operation.target ? String(event.operation.target.id) : null;
-      if (activeOverId === overId) return;
-      clearDropTarget();
-      activeOverId = overId;
-
-      if (activeDragId && overId && activeDragId !== overId) {
-        const overRow = el.viewContainer.querySelector(`.task-row[data-id="${CSS.escape(overId)}"]`);
-        overRow?.classList.add("drop-as-subtask");
-      }
-    });
-
-    manager.monitor.addEventListener("dragend", (event) => {
-      const draggedId = String(event.operation.source.id);
-      const targetId = event.operation.target ? String(event.operation.target.id) : null;
-      cleanupDragStyles(rows);
-
-      if (!event.canceled && targetId && draggedId !== targetId && taskService.moveTaskUnderParent(draggedId, targetId)) {
-        setSelectedTaskId(draggedId);
-        setSelectedProjectIdForDetail(null);
-        const state = getState();
-        if (!state.settings.expandedTaskIds.includes(targetId)) state.settings.expandedTaskIds.push(targetId);
-        saveState();
-        renderAll();
-      }
-    });
-
-    rows.forEach((row) => {
-      row.draggable = false;
-      new dndKit.Draggable(
-        {
-          id: row.dataset.id,
-          element: row,
-          type: "task",
-        },
-        manager
-      );
-      new dndKit.Droppable(
-        {
-          id: row.dataset.id,
-          element: row,
-          accept: "task",
-          collisionPriority: Number(row.dataset.level || 0) + 1,
-        },
-        manager
-      );
-    });
-
-    cleanupDnd = () => manager.destroy();
+  function markDropPosition(row, position) {
+    if (row.dataset.id === activeDragId) return;
+    clearDropIndicators();
+    row.classList.add(position === "after" ? "drop-after" : "drop-before");
   }
 
   /**
    * 清理拖拽中的视觉状态。
-   * @param {HTMLElement[]} rows
    */
-  function cleanupDragStyles(rows) {
-    rows.forEach((row) => row.classList.remove("dragging", "drop-as-subtask"));
+  function cleanupDragStyles() {
+    el.viewContainer
+      .querySelectorAll(".task-row")
+      .forEach((row) => row.classList.remove("dragging", "drop-before", "drop-after"));
     activeDragId = null;
-    activeOverId = null;
+  }
+
+  /**
+   * 清理插入位置提示。
+   */
+  function clearDropIndicators() {
+    el.viewContainer
+      .querySelectorAll(".task-row.drop-before, .task-row.drop-after")
+      .forEach((row) => row.classList.remove("drop-before", "drop-after"));
   }
 
   return {
