@@ -508,7 +508,7 @@ export function createRenderer(deps) {
   }
 
   /**
-   * 绑定原生鼠标拖拽逻辑，实现列表/看板中的任务排序。
+   * 绑定原生鼠标拖拽逻辑：边缘排序，中间区域成为子任务。
    * @param {HTMLElement} row
    */
   function wireFallbackTaskDragEvents(row) {
@@ -524,11 +524,11 @@ export function createRenderer(deps) {
       event.preventDefault();
       event.stopPropagation();
       event.dataTransfer.dropEffect = "move";
-      markDropPosition(row, getTaskDropPosition(event, row));
+      markDropPosition(row, getTaskDropIntent(event, row));
     });
     row.addEventListener("dragleave", (event) => {
       if (!row.contains(event.relatedTarget)) {
-        row.classList.remove("drop-before", "drop-after");
+        row.classList.remove("drop-before", "drop-after", "drop-as-subtask");
       }
     });
     row.addEventListener("drop", (event) => {
@@ -536,33 +536,56 @@ export function createRenderer(deps) {
       event.stopPropagation();
       const draggedId = event.dataTransfer.getData("text/plain");
       const targetId = row.dataset.id;
-      const position = getTaskDropPosition(event, row);
+      const intent = getTaskDropIntent(event, row);
       cleanupDragStyles();
       if (!draggedId || draggedId === targetId) return;
-      if (taskService.reorderTask(draggedId, targetId, position)) renderAll();
+
+      if (intent === "child") {
+        if (!taskService.moveTaskUnderParent(draggedId, targetId)) return;
+        setSelectedTaskId(draggedId);
+        setSelectedProjectIdForDetail(null);
+        const state = getState();
+        if (!state.settings.expandedTaskIds.includes(targetId)) {
+          state.settings.expandedTaskIds.push(targetId);
+          saveState();
+        }
+        renderAll();
+        return;
+      }
+
+      if (taskService.reorderTask(draggedId, targetId, intent)) renderAll();
     });
   }
 
   /**
-   * 根据鼠标落点判断拖拽任务插到目标任务前还是后。
+   * 根据鼠标落点判断拖拽意图：上/下边缘排序，中间成为子任务。
    * @param {DragEvent} event
    * @param {HTMLElement} row
-   * @returns {"before" | "after"}
+   * @returns {"before" | "child" | "after"}
    */
-  function getTaskDropPosition(event, row) {
+  function getTaskDropIntent(event, row) {
     const rect = row.getBoundingClientRect();
-    return event.clientY < rect.top + rect.height / 2 ? "before" : "after";
+    const y = event.clientY - rect.top;
+    const edgeHeight = Math.min(28, rect.height * 0.3);
+    if (y < edgeHeight) return "before";
+    if (y > rect.height - edgeHeight) return "after";
+    return "child";
   }
 
   /**
-   * 标记当前插入方向，让用户看到松开鼠标后的排序位置。
+   * 标记当前拖拽意图，让用户看到松开鼠标后的结果。
    * @param {HTMLElement} row
-   * @param {"before" | "after"} position
+   * @param {"before" | "child" | "after"} intent
    */
-  function markDropPosition(row, position) {
+  function markDropPosition(row, intent) {
     if (row.dataset.id === activeDragId) return;
     clearDropIndicators();
-    row.classList.add(position === "after" ? "drop-after" : "drop-before");
+    const className = {
+      before: "drop-before",
+      child: "drop-as-subtask",
+      after: "drop-after",
+    }[intent];
+    row.classList.add(className);
   }
 
   /**
@@ -571,7 +594,7 @@ export function createRenderer(deps) {
   function cleanupDragStyles() {
     el.viewContainer
       .querySelectorAll(".task-row")
-      .forEach((row) => row.classList.remove("dragging", "drop-before", "drop-after"));
+      .forEach((row) => row.classList.remove("dragging", "drop-before", "drop-after", "drop-as-subtask"));
     activeDragId = null;
   }
 
@@ -580,8 +603,8 @@ export function createRenderer(deps) {
    */
   function clearDropIndicators() {
     el.viewContainer
-      .querySelectorAll(".task-row.drop-before, .task-row.drop-after")
-      .forEach((row) => row.classList.remove("drop-before", "drop-after"));
+      .querySelectorAll(".task-row.drop-before, .task-row.drop-after, .task-row.drop-as-subtask")
+      .forEach((row) => row.classList.remove("drop-before", "drop-after", "drop-as-subtask"));
   }
 
   return {
