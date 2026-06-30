@@ -22,6 +22,10 @@ export function createInitialState() {
       currentView: "list",
       expandedTaskIds: [],
       subtaskExpandModes: {},
+      topLevelSort: {
+        by: "manual",
+        direction: "asc",
+      },
       filters: {
         status: "open",
         priority: "all",
@@ -63,6 +67,19 @@ export function normalizeState(candidate, initialState) {
 
   if (!normalized.settings.subtaskExpandModes || typeof normalized.settings.subtaskExpandModes !== "object" || Array.isArray(normalized.settings.subtaskExpandModes)) {
     normalized.settings.subtaskExpandModes = {};
+  }
+
+  if (!normalized.settings.topLevelSort || typeof normalized.settings.topLevelSort !== "object" || Array.isArray(normalized.settings.topLevelSort)) {
+    normalized.settings.topLevelSort = structuredClone(initialState.settings.topLevelSort);
+  }
+
+  const validSortFields = new Set(["manual", "priority", "dueDate", "createdAt", "title"]);
+  if (!validSortFields.has(normalized.settings.topLevelSort.by)) {
+    normalized.settings.topLevelSort.by = initialState.settings.topLevelSort.by;
+  }
+
+  if (!["asc", "desc"].includes(normalized.settings.topLevelSort.direction)) {
+    normalized.settings.topLevelSort.direction = initialState.settings.topLevelSort.direction;
   }
 
   if (!normalized.projects.length) {

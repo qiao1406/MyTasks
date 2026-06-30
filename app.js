@@ -39,6 +39,8 @@ const el = {
   filterPriority: document.getElementById("filter-priority"),
   filterTag: document.getElementById("filter-tag"),
   filterDue: document.getElementById("filter-due"),
+  sortTopLevelBy: document.getElementById("sort-top-level-by"),
+  sortTopLevelDirection: document.getElementById("sort-top-level-direction"),
   searchText: document.getElementById("search-text"),
 
   btnExportJson: document.getElementById("btn-export-json"),
@@ -200,6 +202,17 @@ function setFilter(key, value, immediate = true) {
 
   clearTimeout(setFilter._timer);
   setFilter._timer = setTimeout(renderAll, 180);
+}
+
+/**
+ * 更新一级任务排序设置。
+ * @param {"by" | "direction"} key
+ * @param {string} value
+ */
+function setTopLevelSort(key, value) {
+  state.settings.topLevelSort[key] = value;
+  saveState();
+  renderAll();
 }
 
 /**
@@ -410,6 +423,8 @@ function wireEvents() {
   el.filterPriority.addEventListener("change", () => setFilter("priority", el.filterPriority.value));
   el.filterTag.addEventListener("input", () => setFilter("tag", el.filterTag.value, false));
   el.filterDue.addEventListener("change", () => setFilter("due", el.filterDue.value));
+  el.sortTopLevelBy.addEventListener("change", () => setTopLevelSort("by", el.sortTopLevelBy.value));
+  el.sortTopLevelDirection.addEventListener("change", () => setTopLevelSort("direction", el.sortTopLevelDirection.value));
   el.searchText.addEventListener("input", () => setFilter("search", el.searchText.value, false));
 
   el.taskForm.addEventListener("submit", submitTaskForm);

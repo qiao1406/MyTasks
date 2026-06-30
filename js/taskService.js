@@ -156,15 +156,84 @@ export function createTaskService(deps) {
   }
 
   /**
+   * 按设置排序一级任务，默认保留手动顺序。
+   * @param {Array<any>} tasks
+   */
+  function sortTopLevelTasks(tasks) {
+    const sort = getState().settings.topLevelSort || { by: "manual", direction: "asc" };
+    const directionFactor = sort.direction === "desc" ? -1 : 1;
+
+    return [...tasks].sort((a, b) => {
+      const aDone = a.status === "done" ? 1 : 0;
+      const bDone = b.status === "done" ? 1 : 0;
+      if (aDone !== bDone) return aDone - bDone;
+
+      const fieldCompare = compareTasksByField(a, b, sort.by, directionFactor);
+      if (fieldCompare !== 0) return fieldCompare * directionFactor;
+
+      return (a.order ?? 0) - (b.order ?? 0);
+    });
+  }
+
+  /**
+   * 比较两个任务在指定字段下的顺序。
+   * @param {any} a
+   * @param {any} b
+   * @param {string} field
+   * @param {1 | -1} directionFactor
+   */
+  function compareTasksByField(a, b, field, directionFactor) {
+    if (field === "priority") {
+      const rank = { high: 0, medium: 1, low: 2 };
+      return (rank[a.priority] ?? 99) - (rank[b.priority] ?? 99);
+    }
+
+    if (field === "dueDate") {
+      return compareNullableTime(a.dueDate, b.dueDate, directionFactor);
+    }
+
+    if (field === "createdAt") {
+      return compareNullableTime(a.createdAt, b.createdAt, directionFactor);
+    }
+
+    if (field === "title") {
+      return String(a.title || "").localeCompare(String(b.title || ""), "zh-CN", { numeric: true, sensitivity: "base" });
+    }
+
+    return (a.order ?? 0) - (b.order ?? 0);
+  }
+
+  /**
+   * 比较可为空的时间字段，空值始终放在最后。
+   * @param {string | null | undefined} a
+   * @param {string | null | undefined} b
+   * @param {1 | -1} directionFactor
+   */
+  function compareNullableTime(a, b, directionFactor) {
+    const aTime = toValidTime(a);
+    const bTime = toValidTime(b);
+    if (aTime === null && bTime === null) return 0;
+    if (aTime === null) return 1 * directionFactor;
+    if (bTime === null) return -1 * directionFactor;
+    return aTime - bTime;
+  }
+
+  /**
+   * @param {string | null | undefined} value
+   * @returns {number | null}
+   */
+  function toValidTime(value) {
+    if (!value) return null;
+    const time = new Date(value).getTime();
+    return Number.isNaN(time) ? null : time;
+  }
+
+  /**
    * 取顶级任务并按“未完成优先 + 排序号”排序。
    * @param {Array<any>} tasks
    */
   function topLevelTasks(tasks) {
-    return sortTasksDoneLast(
-      tasks
-        .filter((t) => !t.parentId)
-        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-    );
+    return sortTopLevelTasks(tasks.filter((t) => !t.parentId));
   }
 
   /**
@@ -416,6 +485,7 @@ export function createTaskService(deps) {
     directSubtaskProgress,
     filteredTasks,
     sortTasksDoneLast,
+    sortTopLevelTasks,
     topLevelTasks,
     toggleTask,
     deleteTask,

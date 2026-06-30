@@ -117,14 +117,18 @@ export function createRenderer(deps) {
   function buildTaskRow(task, level = 0) {
     const isTopLevel = level === 0;
     const rowClass = isTopLevel ? "task-row task-top-level" : "task-row task-child-level";
+    const usesManualTopLevelSort = getState().settings.topLevelSort?.by === "manual";
     const row = document.createElement("article");
 
     row.className = rowClass;
-    row.draggable = true;
+    row.draggable = !isTopLevel || usesManualTopLevelSort;
     row.dataset.id = task.id;
     row.dataset.level = String(level);
     row.dataset.priority = task.priority;
     row.dataset.visualStatus = visualStatus(task);
+    if (isTopLevel && !usesManualTopLevelSort) {
+      row.dataset.dragDisabledReason = "sorted";
+    }
 
     const tags = (task.tags || []).map((x) => `<span class="tag">${escapeHtml(x)}</span>`).join("");
     const doneClass = task.status === "done" ? "done" : "";
@@ -471,11 +475,14 @@ export function createRenderer(deps) {
    * 同步筛选控件值到当前状态。
    */
   function syncFilterControls() {
-    const filters = getState().settings.filters;
+    const settings = getState().settings;
+    const filters = settings.filters;
     el.filterStatus.value = filters.status;
     el.filterPriority.value = filters.priority;
     el.filterTag.value = filters.tag;
     el.filterDue.value = filters.due;
+    el.sortTopLevelBy.value = settings.topLevelSort.by;
+    el.sortTopLevelDirection.value = settings.topLevelSort.direction;
     el.searchText.value = filters.search;
   }
 
