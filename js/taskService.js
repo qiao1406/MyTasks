@@ -325,22 +325,29 @@ export function createTaskService(deps) {
    * 对拖拽任务重新排序，并同步父子关系与所属项目。
    * @param {string} draggedId
    * @param {string} targetId
+   * @param {"before" | "after"} [position="before"]
    * @returns {boolean}
    */
-  function reorderTask(draggedId, targetId) {
+  function reorderTask(draggedId, targetId, position = "before") {
     const state = getState();
     const dragged = taskById(draggedId);
     const target = taskById(targetId);
-    if (!dragged || !target) return false;
+    if (!dragged || !target || dragged.id === target.id) return false;
 
-    if ((dragged.parentId || null) !== (target.parentId || null)) {
-      dragged.parentId = target.parentId || null;
+    const draggedDescendants = collectDescendants(dragged.id);
+    if (draggedDescendants.has(target.id)) return false;
+
+    const targetParentId = target.parentId || null;
+    if (targetParentId && draggedDescendants.has(targetParentId)) return false;
+
+    if ((dragged.parentId || null) !== targetParentId) {
+      dragged.parentId = targetParentId;
     }
 
     dragged.projectId = target.projectId;
 
     const siblings = state.tasks
-      .filter((t) => t.projectId === target.projectId && (t.parentId || null) === (target.parentId || null))
+      .filter((t) => t.projectId === target.projectId && (t.parentId || null) === targetParentId)
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
     const from = siblings.findIndex((x) => x.id === dragged.id);
@@ -348,7 +355,9 @@ export function createTaskService(deps) {
     if (from < 0 || to < 0) return false;
 
     const [moved] = siblings.splice(from, 1);
-    siblings.splice(to, 0, moved);
+    const targetIndex = siblings.findIndex((x) => x.id === target.id);
+    const insertIndex = position === "after" ? targetIndex + 1 : targetIndex;
+    siblings.splice(insertIndex, 0, moved);
 
     siblings.forEach((task, idx) => {
       task.order = idx;
