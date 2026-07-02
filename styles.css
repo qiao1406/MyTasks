@@ -1,28 +1,32 @@
 :root {
-  --bg: #eef4ef;
-  --bg-soft: #f8fbf8;
+  --bg: #eef7fb;
+  --bg-soft: #f7fbfd;
   --surface: #ffffff;
-  --text: #1f2b24;
-  --muted: #6a7a70;
-  --border: #d7e2db;
-  --primary: #1f8a70;
-  --primary-strong: #166a56;
-  --danger: #cc3d3d;
-  --warning: #d9801a;
-  --shadow: 0 12px 30px rgba(16, 37, 24, 0.08);
+  --text: #112b3f;
+  --muted: #5f7180;
+  --border: #d5e6ef;
+  --primary: #2770f6;
+  --primary-strong: #19a9bd;
+  --primary-soft: #e7f4ff;
+  --success: #12a594;
+  --danger: #d94545;
+  --warning: #d98b1f;
+  --shadow: 0 12px 30px rgba(24, 80, 116, 0.1);
 }
 
 html[data-theme="dark"] {
-  --bg: #0d1a16;
-  --bg-soft: #13231e;
-  --surface: #182d26;
-  --text: #e6f0eb;
-  --muted: #a4bbb0;
-  --border: #244238;
-  --primary: #36b189;
-  --primary-strong: #4ec69f;
-  --danger: #ff7777;
-  --warning: #ffb347;
+  --bg: #071926;
+  --bg-soft: #0d2534;
+  --surface: #102d3f;
+  --text: #e8f7ff;
+  --muted: #a9c1cf;
+  --border: #1c4a61;
+  --primary: #5aa0ff;
+  --primary-strong: #28c3d7;
+  --primary-soft: #0d3a55;
+  --success: #38d0be;
+  --danger: #ff7474;
+  --warning: #ffc05a;
   --shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
 }
 
@@ -34,7 +38,10 @@ body {
   margin: 0;
   min-height: 100vh;
   color: var(--text);
-  background: radial-gradient(circle at 10% 10%, #f6fbf8 0%, var(--bg) 55%);
+  background:
+    radial-gradient(circle at 12% 8%, rgba(39, 112, 246, 0.16) 0%, transparent 34%),
+    radial-gradient(circle at 86% 12%, rgba(25, 169, 189, 0.18) 0%, transparent 32%),
+    linear-gradient(135deg, #f8fcff 0%, var(--bg) 58%, #eaf8fb 100%);
   font-family: "Avenir Next", "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 
@@ -43,7 +50,7 @@ body {
   inset: 0;
   display: none;
   place-items: center;
-  background: rgba(8, 20, 16, 0.36);
+  background: rgba(5, 22, 34, 0.36);
   z-index: 50;
   backdrop-filter: blur(4px);
 }
@@ -88,7 +95,7 @@ body {
 .orb-1 {
   width: 340px;
   height: 340px;
-  background: rgba(31, 138, 112, 0.2);
+  background: rgba(39, 112, 246, 0.18);
   top: -60px;
   right: -50px;
 }
@@ -96,7 +103,7 @@ body {
 .orb-2 {
   width: 320px;
   height: 320px;
-  background: rgba(217, 128, 26, 0.16);
+  background: rgba(25, 169, 189, 0.16);
   left: -80px;
   bottom: -80px;
 }
@@ -132,14 +139,11 @@ body {
 }
 
 .logo {
-  width: 40px;
-  height: 40px;
-  display: grid;
-  place-items: center;
-  border-radius: 12px;
-  background: var(--primary);
-  color: #fff;
-  font-weight: 700;
+  width: 44px;
+  height: 44px;
+  border-radius: 13px;
+  object-fit: cover;
+  box-shadow: 0 8px 18px rgba(39, 112, 246, 0.22);
 }
 
 .brand h1 {
@@ -357,7 +361,7 @@ textarea {
   font-weight: 500;
   display: grid;
   place-items: center;
-  box-shadow: 0 12px 24px rgba(15, 57, 44, 0.2);
+  box-shadow: 0 12px 24px rgba(39, 112, 246, 0.24);
   cursor: pointer;
   z-index: 5;
 }
@@ -387,7 +391,7 @@ textarea {
 }
 
 .task-top-level {
-  background: color-mix(in srgb, var(--surface) 86%, #f4fbf6);
+  background: color-mix(in srgb, var(--surface) 86%, var(--primary-soft));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 35%, transparent);
 }
 
@@ -411,8 +415,8 @@ textarea {
 }
 
 .task-row[data-visual-status="todo"] {
-  background: color-mix(in srgb, var(--surface) 82%, #e9f6ff);
-  border-left-color: #2f8fda;
+  background: color-mix(in srgb, var(--surface) 82%, #e6f5ff);
+  border-left-color: var(--primary);
 }
 
 .task-row[data-visual-status="overdue"] {
@@ -421,8 +425,8 @@ textarea {
 }
 
 .task-row[data-visual-status="done"] {
-  background: color-mix(in srgb, var(--surface) 86%, #ebf6ee);
-  border-left-color: #2f9e44;
+  background: color-mix(in srgb, var(--surface) 86%, #e5fbf8);
+  border-left-color: var(--success);
 }
 
 .task-row.dragging {
@@ -433,13 +437,13 @@ textarea {
 .task-row.drop-after,
 .task-row.drop-as-subtask {
   border-color: color-mix(in srgb, var(--primary) 70%, var(--border));
-  box-shadow: 0 10px 24px rgba(31, 138, 112, 0.16);
+  box-shadow: 0 10px 24px rgba(39, 112, 246, 0.16);
 }
 
 .task-row.drop-as-subtask {
   box-shadow:
     inset 0 0 0 2px color-mix(in srgb, var(--primary) 70%, transparent),
-    0 10px 24px rgba(31, 138, 112, 0.16);
+    0 10px 24px rgba(39, 112, 246, 0.16);
 }
 
 .task-row.drop-as-subtask::after {
@@ -490,9 +494,9 @@ textarea {
 }
 
 .task-status-todo {
-  color: #0f6d99;
-  border-color: #7fc2e3;
-  background: #dff2fb;
+  color: #1769bb;
+  border-color: #9cccff;
+  background: #e6f4ff;
 }
 
 .task-status-overdue {
@@ -502,9 +506,9 @@ textarea {
 }
 
 .task-status-done {
-  color: #2a7d3a;
-  border-color: #9dd3aa;
-  background: #e4f6e8;
+  color: #087c70;
+  border-color: #8bddcf;
+  background: #e3faf7;
 }
 
 .task-title {
@@ -566,7 +570,7 @@ textarea {
   padding: 6px 8px;
   border-radius: 10px;
   border: 1px dashed color-mix(in srgb, var(--primary) 45%, var(--border));
-  background: color-mix(in srgb, var(--surface) 88%, #ecf7f1);
+  background: color-mix(in srgb, var(--surface) 88%, var(--primary-soft));
 }
 
 .task-progress span {

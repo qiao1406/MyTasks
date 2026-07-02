@@ -64,9 +64,11 @@ const writeUserStateStmt = db.prepare(`
 const contentTypeByExt = new Map([
   ['.html', 'text/html; charset=utf-8'],
   ['.css', 'text/css; charset=utf-8'],
+  ['.ico', 'image/x-icon'],
   ['.js', 'application/javascript; charset=utf-8'],
   ['.json', 'application/json; charset=utf-8'],
   ['.md', 'text/markdown; charset=utf-8'],
+  ['.png', 'image/png'],
 ]);
 
 function nowISO() {
@@ -301,7 +303,11 @@ const server = createServer(async (req, res) => {
 
     try {
       const data = await fs.readFile(target);
-      res.writeHead(200, { 'Content-Type': ctype });
+      const headers = { 'Content-Type': ctype };
+      if (pathname === '/favicon.ico') {
+        headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
+      }
+      res.writeHead(200, headers);
       return res.end(data);
     } catch {
       return sendJson(res, 404, { error: 'Not found' });
