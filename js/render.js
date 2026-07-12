@@ -116,7 +116,7 @@ export function createRenderer(deps) {
    */
   function buildTaskRow(task, level = 0) {
     const isTopLevel = level === 0;
-    const rowClass = isTopLevel ? "task-row task-top-level" : "task-row task-child-level";
+    const rowClass = isTopLevel ? "task-row task-top-level" : "task-row task-child-level subtask-list-item";
     const usesManualTopLevelSort = getState().settings.topLevelSort?.by === "manual";
     const row = document.createElement("article");
 
@@ -158,8 +158,14 @@ export function createRenderer(deps) {
       : "";
 
     const childHint = !isTopLevel && progress ? `<span>下级子任务: ${progress.total}（可继续展开）</span>` : "";
+    const actionButtons = `
+      <button class="btn" data-action="subtask">+子任务</button>
+      <button class="btn" data-action="edit">编辑</button>
+      <button class="btn btn-danger" data-action="delete">删除</button>
+    `;
 
-    row.innerHTML = `
+    row.innerHTML = isTopLevel
+      ? `
       <div class="task-head">
         <div class="task-title ${doneClass}">${escapeHtml(task.title)}</div>
         <div class="small task-status-badge task-status-${vStatus}">${statusText}</div>
@@ -175,16 +181,37 @@ export function createRenderer(deps) {
       ${tags ? `<div class="task-tags">${tags}</div>` : ""}
       <div class="task-actions">
         <button class="btn" data-action="toggle">${task.status === "done" ? "设为未完成" : "完成"}</button>
-        <button class="btn" data-action="subtask">+子任务</button>
-        <button class="btn" data-action="edit">编辑</button>
-        <button class="btn btn-danger" data-action="delete">删除</button>
+        ${actionButtons}
+      </div>
+    `
+      : `
+      <div class="subtask-check-wrap">
+        <input class="subtask-checkbox" type="checkbox" data-action="toggle" ${task.status === "done" ? "checked" : ""} aria-label="切换子任务完成状态" />
+      </div>
+      <div class="subtask-list-content">
+        <div class="subtask-list-main">
+          <div class="task-title ${doneClass}">${escapeHtml(task.title)}</div>
+          <div class="small task-status-badge task-status-${vStatus}">${statusText}</div>
+        </div>
+        ${description ? `<div class="task-desc ${doneClass}">${escapeHtml(description)}</div>` : ""}
+        <div class="task-sub">
+          <span>优先级: ${labelPriority(task.priority)}</span>
+          <span>截止: ${formatDate(task.dueDate)}</span>
+          <span>负责人: ${escapeHtml(task.assignee || "未分配")}</span>
+          ${childHint}
+        </div>
+        ${progressBlock}
+        ${tags ? `<div class="task-tags">${tags}</div>` : ""}
+      </div>
+      <div class="subtask-list-actions">
+        ${actionButtons}
       </div>
     `;
 
     row.addEventListener("click", (event) => {
-      const button = event.target.closest("button");
-      if (button) {
-        const action = button.dataset.action;
+      const control = event.target.closest("button, input");
+      if (control) {
+        const action = control.dataset.action;
         if (action === "toggle") {
           taskService.toggleTask(task.id);
           renderAll();
@@ -195,7 +222,7 @@ export function createRenderer(deps) {
         } else if (action === "delete") {
           onDeleteTask(task.id);
         } else if (action === "expand-mode") {
-          setSubtaskExpandMode(task.id, button.dataset.expandMode === "open" ? "open" : "all");
+          setSubtaskExpandMode(task.id, control.dataset.expandMode === "open" ? "open" : "all");
         }
         return;
       }
@@ -380,17 +407,20 @@ export function createRenderer(deps) {
         ? `
           <div class="detail-block">
             <h4>一级子任务</h4>
-            <div class="detail-subtasks">
+            <ul class="detail-subtasks">
               ${directChildren
                 .map((sub) => {
                   const deepCount = taskService.childrenOf(sub.id).length;
-                  return `<button class="detail-subtask-item" data-subtask-id="${sub.id}">
-                    <span>${escapeHtml(sub.title)}</span>
-                    <span class="small">${labelStatus(sub.status)}${deepCount ? ` · 下级 ${deepCount}` : ""}</span>
-                  </button>`;
+                  return `<li class="detail-subtask-item" data-subtask-id="${sub.id}">
+                    <input class="subtask-checkbox" type="checkbox" data-action="toggle-detail-subtask" data-subtask-id="${sub.id}" ${sub.status === "done" ? "checked" : ""} aria-label="切换子任务完成状态" />
+                    <button class="detail-subtask-open" type="button" data-action="open-detail-subtask" data-subtask-id="${sub.id}">
+                      <span class="${sub.status === "done" ? "done" : ""}">${escapeHtml(sub.title)}</span>
+                      <span class="small">${labelStatus(sub.status)}${deepCount ? ` · 下级 ${deepCount}` : ""}</span>
+                    </button>
+                  </li>`;
                 })
                 .join("")}
-            </div>
+            </ul>
           </div>
         `
         : "";
@@ -425,7 +455,17 @@ export function createRenderer(deps) {
       });
       document.getElementById("d-delete").addEventListener("click", () => onDeleteTask(task.id));
 
-      box.querySelectorAll(".detail-subtask-item").forEach((item) => {
+      box.querySelectorAll("[data-action='toggle-detail-subtask']").forEach((item) => {
+        item.addEventListener("click", (event) => {
+          event.stopPropagation();
+          const subtaskId = item.dataset.subtaskId;
+          if (!subtaskId) return;
+          taskService.toggleTask(subtaskId);
+          renderAll();
+        });
+      });
+
+      box.querySelectorAll("[data-action='open-detail-subtask']").forEach((item) => {
         item.addEventListener("click", () => {
           const subtaskId = item.dataset.subtaskId;
           if (!subtaskId) return;
