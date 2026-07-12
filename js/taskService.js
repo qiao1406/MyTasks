@@ -2,7 +2,7 @@ import { nowISO, todayDateOnly, uid } from "./utils.js";
 
 /**
  * 创建任务领域服务，集中管理任务/项目的纯业务逻辑。
- * @param {{ getState: () => any, setState: (nextState: any) => void, saveState: () => void }} deps
+ * @param {{ getState: () => any, setState: (nextState: any) => void, saveState: () => Promise<{ ok: boolean, error?: Error }> }} deps
  */
 export function createTaskService(deps) {
   const { getState, setState, saveState } = deps;
@@ -291,7 +291,7 @@ export function createTaskService(deps) {
    * 新建或更新任务。
    * @param {object} payload
    * @param {string | null} editingId
-   * @returns {{ task: any, created: boolean } | null}
+   * @returns {{ task: any, created: boolean, persistResult: Promise<{ ok: boolean, error?: Error }> } | null}
    */
   function upsertTask(payload, editingId) {
     const state = getState();
@@ -301,8 +301,8 @@ export function createTaskService(deps) {
       const task = taskById(editingId);
       if (!task) return null;
       Object.assign(task, payload, { updatedAt: nowISO() });
-      saveState();
-      return { task, created: false };
+      const persistResult = saveState();
+      return { task, created: false, persistResult };
     }
 
     const siblingCount = state.tasks.filter(
@@ -319,8 +319,8 @@ export function createTaskService(deps) {
 
     state.tasks.push(task);
     setState(state);
-    saveState();
-    return { task, created: true };
+    const persistResult = saveState();
+    return { task, created: true, persistResult };
   }
 
   /**

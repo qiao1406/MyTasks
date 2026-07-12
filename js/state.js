@@ -139,23 +139,26 @@ export async function saveStateToServer(apiFetch, snapshot) {
  * apiFetch: (path: string, options?: RequestInit) => Promise<any>,
  * storageKey: string,
  * }} deps
- * @returns {() => void}
+ * @returns {() => Promise<{ ok: boolean, error?: Error }>}
  */
 export function createSaveState(deps) {
   const { getState, getPersistQueue, setPersistQueue, apiFetch, storageKey } = deps;
 
   return function saveState() {
     const snapshot = structuredClone(getState());
-    const nextQueue = getPersistQueue()
-      .then(() => saveStateToServer(apiFetch, snapshot))
-      .catch(() => {
+    const persistRequest = getPersistQueue().then(() => saveStateToServer(apiFetch, snapshot));
+    const result = persistRequest
+      .then(() => ({ ok: true }))
+      .catch((error) => {
         try {
           localStorage.setItem(storageKey, JSON.stringify(snapshot));
         } catch {
           // ignore local fallback failures
         }
+        return { ok: false, error: error instanceof Error ? error : new Error("保存失败") };
       });
 
-    setPersistQueue(nextQueue);
+    setPersistQueue(result.then(() => undefined));
+    return result;
   };
 }

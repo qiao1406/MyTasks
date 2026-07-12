@@ -186,6 +186,18 @@ const renderer = createRenderer({
 renderAll = renderer.renderAll;
 
 /**
+ * 将持久化错误转换为面向用户的提示。
+ * @param {Error | undefined} error
+ */
+function formatPersistError(error) {
+  const message = String(error?.message || "未知错误");
+  if (error?.name === "TypeError" || /failed to fetch|networkerror|load failed/i.test(message)) {
+    return "网络连接失败，请检查数据库服务或网络后重试。";
+  }
+  return message;
+}
+
+/**
  * 更新筛选条件，支持输入防抖刷新。
  * @param {"status" | "priority" | "tag" | "due" | "search"} key
  * @param {string} value
@@ -261,8 +273,17 @@ function openTaskDialog(taskId = null, parentId = null) {
  * 提交任务表单并创建或更新任务。
  * @param {SubmitEvent} event
  */
-function submitTaskForm(event) {
+async function submitTaskForm(event) {
   event.preventDefault();
+
+  const previousState = structuredClone(state);
+  const previousSelectedTaskId = selectedTaskId;
+  const previousSelectedProjectIdForDetail = selectedProjectIdForDetail;
+  const submitButton = el.taskForm.querySelector('button[type="submit"]');
+  if (submitButton) {
+    submitButton.disabled = true;
+    submitButton.textContent = "保存中...";
+  }
 
   const payload = {
     title: el.taskTitle.value.trim(),
@@ -280,14 +301,31 @@ function submitTaskForm(event) {
     parentId: el.taskParentId.value || null,
   };
 
-  const result = taskService.upsertTask(payload, el.taskId.value || null);
-  if (!result) return;
+  try {
+    const result = taskService.upsertTask(payload, el.taskId.value || null);
+    if (!result) return;
 
-  selectedTaskId = result.task.id;
-  if (result.created) selectedProjectIdForDetail = null;
+    const persistResult = await result.persistResult;
+    if (!persistResult?.ok) {
+      state = previousState;
+      selectedTaskId = previousSelectedTaskId;
+      selectedProjectIdForDetail = previousSelectedProjectIdForDetail;
+      renderAll();
+      alert(`${result.created ? "创建" : "保存"}任务失败：${formatPersistError(persistResult?.error)}`);
+      return;
+    }
 
-  el.taskDialog.close();
-  renderAll();
+    selectedTaskId = result.task.id;
+    if (result.created) selectedProjectIdForDetail = null;
+
+    el.taskDialog.close();
+    renderAll();
+  } finally {
+    if (submitButton) {
+      submitButton.disabled = false;
+      submitButton.textContent = "保存";
+    }
+  }
 }
 
 /**

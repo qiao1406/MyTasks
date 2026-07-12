@@ -159,7 +159,10 @@ function readStateByUserId(userId) {
 
 function writeStateByUserId(userId, state) {
   const payload = JSON.stringify(state);
-  writeUserStateStmt.run(userId, payload, nowISO());
+  const result = writeUserStateStmt.run(userId, payload, nowISO());
+  if (!result || result.changes < 1) {
+    throw new Error('写入数据库失败');
+  }
 }
 
 async function readRequestBody(req) {
