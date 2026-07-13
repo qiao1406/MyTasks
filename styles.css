@@ -425,6 +425,7 @@ textarea {
 
 .subtask-list-item[data-visual-status="todo"],
 .subtask-list-item[data-visual-status="overdue"],
+.subtask-list-item[data-visual-status="suspended"],
 .subtask-list-item[data-visual-status="done"] {
   background: transparent;
 }
@@ -499,6 +500,11 @@ textarea {
   border-left-color: #e24b4b;
 }
 
+.task-row[data-visual-status="suspended"] {
+  background: color-mix(in srgb, var(--surface) 84%, #f0ecff);
+  border-left-color: #7c5cff;
+}
+
 .task-row[data-visual-status="done"] {
   background: color-mix(in srgb, var(--surface) 86%, #e5fbf8);
   border-left-color: var(--success);
@@ -506,6 +512,7 @@ textarea {
 
 .subtask-list-item[data-visual-status="todo"],
 .subtask-list-item[data-visual-status="overdue"],
+.subtask-list-item[data-visual-status="suspended"],
 .subtask-list-item[data-visual-status="done"] {
   background: transparent;
 }
@@ -596,6 +603,12 @@ textarea {
   color: #b42323;
   border-color: #e6a2a2;
   background: #ffe3e3;
+}
+
+.task-status-suspended {
+  color: #5940b8;
+  border-color: #c4b5fd;
+  background: #f0ecff;
 }
 
 .task-status-done {

@@ -135,6 +135,7 @@ export function createRenderer(deps) {
     const vStatus = visualStatus(task);
     const statusText = vStatus === "overdue" ? "已延期" : labelStatus(task.status);
     const description = (task.description || "").trim();
+    const statusActionButtons = buildStatusActionButtons(task);
 
     const progress = taskService.directSubtaskProgress(task.id);
     const expanded = isExpanded(task.id);
@@ -180,7 +181,7 @@ export function createRenderer(deps) {
       ${progressBlock}
       ${tags ? `<div class="task-tags">${tags}</div>` : ""}
       <div class="task-actions">
-        <button class="btn" data-action="toggle">${task.status === "done" ? "设为未完成" : "完成"}</button>
+        ${statusActionButtons}
         ${actionButtons}
       </div>
     `
@@ -204,6 +205,7 @@ export function createRenderer(deps) {
         ${tags ? `<div class="task-tags">${tags}</div>` : ""}
       </div>
       <div class="subtask-list-actions">
+        ${statusActionButtons}
         ${actionButtons}
       </div>
     `;
@@ -215,6 +217,8 @@ export function createRenderer(deps) {
         if (action === "toggle") {
           taskService.toggleTask(task.id);
           renderAll();
+        } else if (action === "set-status") {
+          if (taskService.updateTaskStatus(task.id, control.dataset.statusTarget)) renderAll();
         } else if (action === "subtask") {
           openTaskDialog(null, task.id);
         } else if (action === "edit") {
@@ -240,6 +244,50 @@ export function createRenderer(deps) {
 
     wireFallbackTaskDragEvents(row);
     return row;
+  }
+
+  /**
+   * 构建任务状态切换按钮，确保已完成任务不能直接挂起。
+   * @param {any} task
+   */
+  function buildStatusActionButtons(task) {
+    if (task.status === "done") {
+      return `<button class="btn" data-action="set-status" data-status-target="todo">设为未完成</button>`;
+    }
+
+    if (task.status === "suspended") {
+      return `
+        <button class="btn" data-action="set-status" data-status-target="todo">设为未完成</button>
+        <button class="btn" data-action="set-status" data-status-target="done">完成</button>
+      `;
+    }
+
+    return `
+      <button class="btn" data-action="set-status" data-status-target="done">完成</button>
+      <button class="btn" data-action="set-status" data-status-target="suspended">挂起</button>
+    `;
+  }
+
+  /**
+   * 构建详情面板中的状态切换按钮。
+   * @param {any} task
+   */
+  function buildDetailStatusActions(task) {
+    if (task.status === "done") {
+      return `<button class="btn" data-action="detail-status" data-status-target="todo">设为未完成</button>`;
+    }
+
+    if (task.status === "suspended") {
+      return `
+        <button class="btn" data-action="detail-status" data-status-target="todo">设为未完成</button>
+        <button class="btn" data-action="detail-status" data-status-target="done">标记完成</button>
+      `;
+    }
+
+    return `
+      <button class="btn" data-action="detail-status" data-status-target="done">标记完成</button>
+      <button class="btn" data-action="detail-status" data-status-target="suspended">挂起</button>
+    `;
   }
 
   /**
@@ -297,6 +345,7 @@ export function createRenderer(deps) {
 
     const columns = [
       ["todo", "待处理"],
+      ["suspended", "已挂起"],
       ["done", "已完成"],
     ];
 
@@ -402,6 +451,7 @@ export function createRenderer(deps) {
       const project = taskService.projectById(task.projectId);
       const directChildren = taskService.childrenOf(task.id);
       const box = document.createElement("div");
+      const detailStatusActions = buildDetailStatusActions(task);
 
       const childList = directChildren.length
         ? `
@@ -441,7 +491,7 @@ export function createRenderer(deps) {
         <div class="detail-block">
           <button class="btn" id="d-edit-task">编辑任务</button>
           <button class="btn" id="d-subtask">添加子任务</button>
-          <button class="btn" id="d-toggle">${task.status === "done" ? "设为未完成" : "标记完成"}</button>
+          ${detailStatusActions}
           <button class="btn btn-danger" id="d-delete">删除任务</button>
         </div>
       `;
@@ -449,9 +499,10 @@ export function createRenderer(deps) {
       el.detailContent.appendChild(box);
       document.getElementById("d-edit-task").addEventListener("click", () => openTaskDialog(task.id));
       document.getElementById("d-subtask").addEventListener("click", () => openTaskDialog(null, task.id));
-      document.getElementById("d-toggle").addEventListener("click", () => {
-        taskService.toggleTask(task.id);
-        renderAll();
+      box.querySelectorAll("[data-action='detail-status']").forEach((button) => {
+        button.addEventListener("click", () => {
+          if (taskService.updateTaskStatus(task.id, button.dataset.statusTarget)) renderAll();
+        });
       });
       document.getElementById("d-delete").addEventListener("click", () => onDeleteTask(task.id));
 

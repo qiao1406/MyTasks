@@ -6,6 +6,25 @@ import { nowISO, todayDateOnly, uid } from "./utils.js";
  */
 export function createTaskService(deps) {
   const { getState, setState, saveState } = deps;
+  const taskStatuses = ["todo", "suspended", "done"];
+
+  /**
+   * 规范化任务状态。
+   * @param {string} status
+   */
+  function normalizeTaskStatus(status) {
+    return taskStatuses.includes(status) ? status : "todo";
+  }
+
+  /**
+   * 判断任务是否允许切到目标状态。
+   * @param {any} task
+   * @param {string} status
+   */
+  function canSetTaskStatus(task, status) {
+    const nextStatus = normalizeTaskStatus(status);
+    return nextStatus !== "suspended" || task.status !== "done";
+  }
 
   /**
    * 按 ID 查找任务。
@@ -300,7 +319,8 @@ export function createTaskService(deps) {
     if (editingId) {
       const task = taskById(editingId);
       if (!task) return null;
-      Object.assign(task, payload, { updatedAt: nowISO() });
+      const status = canSetTaskStatus(task, payload.status) ? normalizeTaskStatus(payload.status) : task.status;
+      Object.assign(task, { ...payload, status }, { updatedAt: nowISO() });
       const persistResult = saveState();
       return { task, created: false, persistResult };
     }
@@ -312,6 +332,7 @@ export function createTaskService(deps) {
     const task = {
       id: uid(),
       ...payload,
+      status: normalizeTaskStatus(payload.status),
       order: siblingCount,
       createdAt: nowISO(),
       updatedAt: nowISO(),
@@ -465,12 +486,12 @@ export function createTaskService(deps) {
   /**
    * 更新任务状态。
    * @param {string} taskId
-   * @param {"todo" | "done"} status
+   * @param {"todo" | "suspended" | "done"} status
    * @returns {boolean}
    */
   function updateTaskStatus(taskId, status) {
     const task = taskById(taskId);
-    if (!task || !["todo", "done"].includes(status)) return false;
+    if (!task || !taskStatuses.includes(status) || !canSetTaskStatus(task, status)) return false;
     task.status = status;
     task.updatedAt = nowISO();
     saveState();

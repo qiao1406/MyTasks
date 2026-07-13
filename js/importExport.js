@@ -116,7 +116,7 @@ export function importJsonFile(deps) {
             id: tidMap.get(task.id),
             title: task.title || "未命名任务",
             description: task.description || "",
-            status: ["todo", "done"].includes(task.status) ? task.status : "todo",
+            status: ["todo", "suspended", "done"].includes(task.status) ? task.status : "todo",
             priority: ["low", "medium", "high"].includes(task.priority) ? task.priority : "medium",
             dueDate: task.dueDate || null,
             projectId: pidMap.get(task.projectId) || state.settings.activeProjectId,

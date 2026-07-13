@@ -90,13 +90,16 @@ export function normalizeState(candidate, initialState) {
     normalized.settings.activeProjectId = normalized.projects[0].id;
   }
 
-  const validStatuses = new Set(["all", "open", "todo", "done"]);
+  const validStatuses = new Set(["all", "open", "todo", "suspended", "done"]);
   if (!validStatuses.has(normalized.settings.filters.status) || normalized.settings.filters.status === "all") {
     normalized.settings.filters.status = "open";
   }
 
   normalized.tasks = normalized.tasks.map((task) => {
     if (task.status === "in_progress") {
+      return { ...task, status: "todo" };
+    }
+    if (!["todo", "suspended", "done"].includes(task.status)) {
       return { ...task, status: "todo" };
     }
     return task;
