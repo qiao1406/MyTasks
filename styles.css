@@ -164,6 +164,13 @@ body {
   gap: 8px;
 }
 
+.data-actions .btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
 .panel {
   border: 1px solid var(--border);
   border-radius: 14px;
