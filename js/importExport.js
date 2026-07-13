@@ -127,6 +127,7 @@ export function importJsonFile(deps) {
             order: Number.isFinite(task.order) ? task.order : 0,
             createdAt: task.createdAt || nowISO(),
             updatedAt: task.updatedAt || nowISO(),
+            comments: normalizeImportedComments(task.comments),
           });
         });
 
@@ -142,4 +143,22 @@ export function importJsonFile(deps) {
   };
 
   reader.readAsText(file, "utf-8");
+}
+
+/**
+ * 规范化合并导入的任务评论。
+ * @param {any} comments
+ * @returns {Array<{ id: string, username: string, content: string, createdAt: string }>}
+ */
+function normalizeImportedComments(comments) {
+  if (!Array.isArray(comments)) return [];
+
+  return comments
+    .map((comment) => ({
+      id: uid(),
+      username: String(comment?.username || "").trim() || "匿名用户",
+      content: String(comment?.content || "").trim(),
+      createdAt: comment?.createdAt || nowISO(),
+    }))
+    .filter((comment) => comment.content);
 }

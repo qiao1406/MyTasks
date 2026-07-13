@@ -268,6 +268,31 @@ export function createTaskService(deps) {
   }
 
   /**
+   * 为任务新增评论。
+   * @param {string} taskId
+   * @param {{ username: string, content: string }} payload
+   * @returns {{ id: string, username: string, content: string, createdAt: string } | null}
+   */
+  function addTaskComment(taskId, payload) {
+    const task = taskById(taskId);
+    const content = String(payload.content || "").trim();
+    if (!task || !content) return null;
+
+    if (!Array.isArray(task.comments)) task.comments = [];
+    const comment = {
+      id: uid(),
+      username: String(payload.username || "").trim() || "匿名用户",
+      content,
+      createdAt: nowISO(),
+    };
+
+    task.comments.push(comment);
+    task.updatedAt = nowISO();
+    saveState();
+    return comment;
+  }
+
+  /**
    * 收集任务及其所有后代任务 ID。
    * @param {string} taskId
    */
@@ -333,6 +358,7 @@ export function createTaskService(deps) {
       id: uid(),
       ...payload,
       status: normalizeTaskStatus(payload.status),
+      comments: [],
       order: siblingCount,
       createdAt: nowISO(),
       updatedAt: nowISO(),
@@ -516,6 +542,7 @@ export function createTaskService(deps) {
     reorderTask,
     moveTaskUnderParent,
     updateTaskStatus,
+    addTaskComment,
     collectDescendants,
   };
 }
