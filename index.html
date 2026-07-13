@@ -29,6 +29,11 @@
     </section>
 
     <div class="app-shell">
+      <div class="userbar">
+        <span id="current-user" class="small">未登录</span>
+        <button id="btn-logout" class="btn">退出登录</button>
+      </div>
+
       <aside class="sidebar">
         <div class="brand">
           <img class="logo" src="./app-icon.png" alt="TaskFlow logo" />
@@ -112,10 +117,6 @@
                 <option value="desc">倒序</option>
               </select>
               <input id="search-text" type="text" placeholder="搜索标题/描述" />
-            </div>
-            <div class="userbar">
-              <span id="current-user" class="small">未登录</span>
-              <button id="btn-logout" class="btn">退出登录</button>
             </div>
           </div>
         </header>
