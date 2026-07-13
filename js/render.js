@@ -9,6 +9,7 @@ import { escapeHtml, formatDate, labelPriority, labelStatus, nowISO, todayDateOn
  * setSelectedTaskId: (id: string | null) => void,
  * getSelectedProjectIdForDetail: () => string | null,
  * setSelectedProjectIdForDetail: (id: string | null) => void,
+ * getCurrentUser: () => { username?: string } | null,
  * taskService: any,
  * saveState: () => void,
  * openTaskDialog: (taskId?: string | null, parentId?: string | null) => void,
@@ -26,6 +27,7 @@ export function createRenderer(deps) {
     setSelectedTaskId,
     getSelectedProjectIdForDetail,
     setSelectedProjectIdForDetail,
+    getCurrentUser,
     taskService,
     saveState,
     openTaskDialog,
@@ -58,6 +60,16 @@ export function createRenderer(deps) {
     }
     saveState();
     renderAll();
+  }
+
+  /**
+   * 格式化评论时间。
+   * @param {string | null | undefined} value
+   */
+  function formatCommentTime(value) {
+    const date = new Date(value || "");
+    if (Number.isNaN(date.getTime())) return "时间未知";
+    return date.toLocaleString("zh-CN");
   }
 
   /**
@@ -450,6 +462,7 @@ export function createRenderer(deps) {
       el.detailEmpty.style.display = "none";
       const project = taskService.projectById(task.projectId);
       const directChildren = taskService.childrenOf(task.id);
+      const comments = Array.isArray(task.comments) ? task.comments : [];
       const box = document.createElement("div");
       const detailStatusActions = buildDetailStatusActions(task);
 
@@ -474,6 +487,25 @@ export function createRenderer(deps) {
           </div>
         `
         : "";
+      const commentsList = comments.length
+        ? `
+          <div class="detail-comments-list">
+            ${comments
+              .map(
+                (comment) => `
+                  <article class="detail-comment">
+                    <div class="detail-comment-meta">
+                      <strong>${escapeHtml(comment.username || "匿名用户")}</strong>
+                      <time datetime="${escapeHtml(comment.createdAt || "")}">${escapeHtml(formatCommentTime(comment.createdAt))}</time>
+                    </div>
+                    <div class="detail-comment-content">${escapeHtml(comment.content || "")}</div>
+                  </article>
+                `
+              )
+              .join("")}
+          </div>
+        `
+        : `<p class="detail-comments-empty small">暂无评论</p>`;
 
       box.innerHTML = `
         <div class="detail-block">
@@ -488,6 +520,14 @@ export function createRenderer(deps) {
           <p><strong>附件:</strong> ${task.attachment ? `<a href="${escapeHtml(task.attachment)}" target="_blank">${escapeHtml(task.attachment)}</a>` : "无"}</p>
         </div>
         ${childList}
+        <div class="detail-block detail-comments">
+          <h4>评论</h4>
+          ${commentsList}
+          <form id="d-comment-form" class="detail-comment-form">
+            <textarea id="d-comment-content" rows="3" maxlength="1000" placeholder="添加评论..." required></textarea>
+            <button class="btn btn-primary" type="submit">发表评论</button>
+          </form>
+        </div>
         <div class="detail-block">
           <button class="btn" id="d-edit-task">编辑任务</button>
           <button class="btn" id="d-subtask">添加子任务</button>
@@ -505,6 +545,16 @@ export function createRenderer(deps) {
         });
       });
       document.getElementById("d-delete").addEventListener("click", () => onDeleteTask(task.id));
+      document.getElementById("d-comment-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const content = document.getElementById("d-comment-content").value;
+        const user = getCurrentUser?.();
+        const comment = taskService.addTaskComment(task.id, {
+          username: user?.username || "匿名用户",
+          content,
+        });
+        if (comment) renderDetail();
+      });
 
       box.querySelectorAll("[data-action='toggle-detail-subtask']").forEach((item) => {
         item.addEventListener("click", (event) => {

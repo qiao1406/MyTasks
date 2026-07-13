@@ -851,6 +851,67 @@ textarea {
   color: var(--muted);
 }
 
+.detail-comments h4 {
+  margin: 0 0 10px;
+}
+
+.detail-comments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.detail-comment {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 10px;
+}
+
+.detail-comment:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.detail-comment-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.detail-comment-meta time {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.detail-comment-content {
+  color: var(--text);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.detail-comments-empty {
+  margin: 0 0 12px;
+}
+
+.detail-comment-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.detail-comment-form textarea {
+  min-height: 76px;
+  resize: vertical;
+}
+
+.detail-comment-form .btn {
+  align-self: flex-end;
+}
+
 .btn {
   border: 1px solid var(--border);
   border-radius: 10px;

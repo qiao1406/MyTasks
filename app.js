@@ -174,6 +174,7 @@ const renderer = createRenderer({
   setSelectedProjectIdForDetail: (id) => {
     selectedProjectIdForDetail = id;
   },
+  getCurrentUser: () => currentUser,
   taskService,
   saveState,
   openTaskDialog,

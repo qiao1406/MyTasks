@@ -96,16 +96,33 @@ export function normalizeState(candidate, initialState) {
   }
 
   normalized.tasks = normalized.tasks.map((task) => {
-    if (task.status === "in_progress") {
-      return { ...task, status: "todo" };
+    const normalizedTask = { ...task };
+    if (normalizedTask.status === "in_progress" || !["todo", "suspended", "done"].includes(normalizedTask.status)) {
+      normalizedTask.status = "todo";
     }
-    if (!["todo", "suspended", "done"].includes(task.status)) {
-      return { ...task, status: "todo" };
-    }
-    return task;
+    normalizedTask.comments = normalizeTaskComments(task.comments);
+    return normalizedTask;
   });
 
   return normalized;
+}
+
+/**
+ * 规范化任务评论，兼容旧数据或外部导入数据。
+ * @param {any} comments
+ * @returns {Array<{ id: string, username: string, content: string, createdAt: string }>}
+ */
+function normalizeTaskComments(comments) {
+  if (!Array.isArray(comments)) return [];
+
+  return comments
+    .map((comment) => ({
+      id: String(comment?.id || uid()),
+      username: String(comment?.username || "").trim() || "匿名用户",
+      content: String(comment?.content || "").trim(),
+      createdAt: comment?.createdAt || nowISO(),
+    }))
+    .filter((comment) => comment.content);
 }
 
 /**
