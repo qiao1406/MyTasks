@@ -246,6 +246,7 @@ function openTaskDialog(taskId = null, parentId = null) {
     el.taskDesc.value = task.description || "";
     el.taskProject.value = task.projectId;
     el.taskAssignee.value = task.assignee || "";
+    syncTaskStatusOptions(task.status);
     el.taskStatus.value = task.status;
     el.taskPriority.value = task.priority;
     el.taskDue.value = task.dueDate ? task.dueDate.slice(0, 10) : "";
@@ -260,6 +261,7 @@ function openTaskDialog(taskId = null, parentId = null) {
     el.taskProject.value = state.settings.activeProjectId;
     el.taskAssignee.value = "";
     el.taskStatus.value = "todo";
+    syncTaskStatusOptions("todo");
     el.taskPriority.value = "medium";
     el.taskDue.value = "";
     el.taskTags.value = "";
@@ -267,6 +269,19 @@ function openTaskDialog(taskId = null, parentId = null) {
   }
 
   el.taskDialog.showModal();
+}
+
+/**
+ * 同步任务状态下拉框可选项，避免已完成任务被直接改为挂起。
+ * @param {string} currentStatus
+ */
+function syncTaskStatusOptions(currentStatus) {
+  const suspendedOption = el.taskStatus.querySelector('option[value="suspended"]');
+  if (!suspendedOption) return;
+  suspendedOption.disabled = currentStatus === "done";
+  if (currentStatus === "done" && el.taskStatus.value === "suspended") {
+    el.taskStatus.value = "done";
+  }
 }
 
 /**

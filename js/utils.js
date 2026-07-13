@@ -43,7 +43,7 @@ export function todayDateOnly() {
  */
 export function isTaskOverdue(task) {
   if (!task?.dueDate) return false;
-  if (task.status === "done") return false;
+  if (task.status === "done" || task.status === "suspended") return false;
   const due = new Date(task.dueDate);
   if (Number.isNaN(due.getTime())) return false;
   due.setHours(0, 0, 0, 0);
@@ -53,10 +53,11 @@ export function isTaskOverdue(task) {
 /**
  * 计算用于展示层的任务状态（待办/完成/逾期）。
  * @param {{ status?: string, dueDate?: string | null }} task
- * @returns {"todo" | "done" | "overdue"}
+ * @returns {"todo" | "suspended" | "done" | "overdue"}
  */
 export function visualStatus(task) {
   if (task.status === "done") return "done";
+  if (task.status === "suspended") return "suspended";
   if (isTaskOverdue(task)) return "overdue";
   return "todo";
 }
@@ -82,6 +83,7 @@ export function escapeHtml(raw) {
  */
 export function labelStatus(status) {
   if (status === "todo") return "待处理";
+  if (status === "suspended") return "已挂起";
   if (status === "done") return "已完成";
   return status;
 }
