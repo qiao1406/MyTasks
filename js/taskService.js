@@ -27,6 +27,19 @@ export function createTaskService(deps) {
   }
 
   /**
+   * 根据状态流转维护完成时间。
+   * @param {any} task
+   * @param {"todo" | "suspended" | "done"} nextStatus
+   * @param {string} timestamp
+   */
+  function completionTimeForStatus(task, nextStatus, timestamp) {
+    if (nextStatus === "done") {
+      return task.status === "done" ? task.completedAt || null : timestamp;
+    }
+    return null;
+  }
+
+  /**
    * 按 ID 查找任务。
    * @param {string} id
    */
@@ -262,8 +275,11 @@ export function createTaskService(deps) {
   function toggleTask(taskId) {
     const task = taskById(taskId);
     if (!task) return;
-    task.status = task.status === "done" ? "todo" : "done";
-    task.updatedAt = nowISO();
+    const nextStatus = task.status === "done" ? "todo" : "done";
+    const timestamp = nowISO();
+    task.completedAt = completionTimeForStatus(task, nextStatus, timestamp);
+    task.status = nextStatus;
+    task.updatedAt = timestamp;
     saveState();
   }
 
@@ -345,7 +361,8 @@ export function createTaskService(deps) {
       const task = taskById(editingId);
       if (!task) return null;
       const status = canSetTaskStatus(task, payload.status) ? normalizeTaskStatus(payload.status) : task.status;
-      Object.assign(task, { ...payload, status }, { updatedAt: nowISO() });
+      const timestamp = nowISO();
+      Object.assign(task, { ...payload, status, completedAt: completionTimeForStatus(task, status, timestamp) }, { updatedAt: timestamp });
       const persistResult = saveState();
       return { task, created: false, persistResult };
     }
@@ -354,14 +371,17 @@ export function createTaskService(deps) {
       (t) => t.projectId === payload.projectId && (t.parentId || null) === payload.parentId
     ).length;
 
+    const timestamp = nowISO();
+    const status = normalizeTaskStatus(payload.status);
     const task = {
       id: uid(),
       ...payload,
-      status: normalizeTaskStatus(payload.status),
+      status,
       comments: [],
       order: siblingCount,
-      createdAt: nowISO(),
-      updatedAt: nowISO(),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      completedAt: status === "done" ? timestamp : null,
     };
 
     state.tasks.push(task);
@@ -518,8 +538,10 @@ export function createTaskService(deps) {
   function updateTaskStatus(taskId, status) {
     const task = taskById(taskId);
     if (!task || !taskStatuses.includes(status) || !canSetTaskStatus(task, status)) return false;
+    const timestamp = nowISO();
+    task.completedAt = completionTimeForStatus(task, status, timestamp);
     task.status = status;
-    task.updatedAt = nowISO();
+    task.updatedAt = timestamp;
     saveState();
     return true;
   }

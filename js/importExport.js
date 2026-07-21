@@ -28,6 +28,7 @@ export function exportCsv(state) {
     "parentId",
     "createdAt",
     "updatedAt",
+    "completedAt",
   ];
 
   const rows = state.tasks.map((task) =>
@@ -112,11 +113,12 @@ export function importJsonFile(deps) {
 
         data.tasks.forEach((task) => {
           const parentMapped = task.parentId ? tidMap.get(task.parentId) || null : null;
+          const status = ["todo", "suspended", "done"].includes(task.status) ? task.status : "todo";
           state.tasks.push({
             id: tidMap.get(task.id),
             title: task.title || "未命名任务",
             description: task.description || "",
-            status: ["todo", "suspended", "done"].includes(task.status) ? task.status : "todo",
+            status,
             priority: ["low", "medium", "high"].includes(task.priority) ? task.priority : "medium",
             dueDate: task.dueDate || null,
             projectId: pidMap.get(task.projectId) || state.settings.activeProjectId,
@@ -127,6 +129,7 @@ export function importJsonFile(deps) {
             order: Number.isFinite(task.order) ? task.order : 0,
             createdAt: task.createdAt || nowISO(),
             updatedAt: task.updatedAt || nowISO(),
+            completedAt: status === "done" ? task.completedAt || null : null,
             comments: normalizeImportedComments(task.comments),
           });
         });

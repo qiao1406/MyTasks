@@ -27,6 +27,19 @@ export function formatDate(dateStr) {
 }
 
 /**
+ * 将日期时间字符串格式化为中文日期时间。
+ * @param {string | null | undefined} dateStr
+ * @param {string} [fallback="时间未知"]
+ * @returns {string}
+ */
+export function formatDateTime(dateStr, fallback = "时间未知") {
+  if (!dateStr) return fallback;
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return fallback;
+  return d.toLocaleString("zh-CN");
+}
+
+/**
  * 获取当天零点时间，用于无时分秒的日期比较。
  * @returns {Date}
  */
