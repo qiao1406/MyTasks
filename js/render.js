@@ -1,4 +1,4 @@
-import { escapeHtml, formatDate, labelPriority, labelStatus, nowISO, todayDateOnly, visualStatus } from "./utils.js";
+import { escapeHtml, formatDate, formatDateTime, labelPriority, labelStatus, nowISO, todayDateOnly, visualStatus } from "./utils.js";
 
 /**
  * 创建渲染器，集中生成列表/看板/日历/详情等 UI。
@@ -67,9 +67,7 @@ export function createRenderer(deps) {
    * @param {string | null | undefined} value
    */
   function formatCommentTime(value) {
-    const date = new Date(value || "");
-    if (Number.isNaN(date.getTime())) return "时间未知";
-    return date.toLocaleString("zh-CN");
+    return formatDateTime(value);
   }
 
   /**
@@ -465,6 +463,9 @@ export function createRenderer(deps) {
       const comments = Array.isArray(task.comments) ? task.comments : [];
       const box = document.createElement("div");
       const detailStatusActions = buildDetailStatusActions(task);
+      const completedTime = task.status === "done"
+        ? `<p><strong>完成时间:</strong> ${escapeHtml(formatDateTime(task.completedAt, "未记录"))}</p>`
+        : "";
 
       const childList = directChildren.length
         ? `
@@ -515,6 +516,8 @@ export function createRenderer(deps) {
           <p><strong>优先级:</strong> ${labelPriority(task.priority)}</p>
           <p><strong>项目:</strong> ${escapeHtml(project ? project.name : "未知")}</p>
           <p><strong>截止日期:</strong> ${formatDate(task.dueDate)}</p>
+          <p><strong>创建时间:</strong> ${escapeHtml(formatDateTime(task.createdAt))}</p>
+          ${completedTime}
           <p><strong>负责人:</strong> ${escapeHtml(task.assignee || "未分配")}</p>
           <p><strong>标签:</strong> ${(task.tags || []).map(escapeHtml).join(", ") || "无"}</p>
           <p><strong>附件:</strong> ${task.attachment ? `<a href="${escapeHtml(task.attachment)}" target="_blank">${escapeHtml(task.attachment)}</a>` : "无"}</p>
@@ -595,7 +598,7 @@ export function createRenderer(deps) {
           <h3>${escapeHtml(project.name)}</h3>
           <p class="small">${escapeHtml(project.description || "无描述")}</p>
           <p><strong>任务进度:</strong> ${progress.done}/${progress.total} (${progress.ratio}%)</p>
-          <p><strong>创建时间:</strong> ${new Date(project.createdAt).toLocaleString("zh-CN")}</p>
+          <p><strong>创建时间:</strong> ${escapeHtml(formatDateTime(project.createdAt))}</p>
         </div>
         <div class="detail-block">
           <button class="btn" id="d-edit-project">编辑项目</button>
