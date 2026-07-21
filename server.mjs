@@ -39,6 +39,28 @@ CREATE TABLE IF NOT EXISTS user_state (
   updated_at TEXT NOT NULL,
   FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS shared_projects (
+  id TEXT PRIMARY KEY,
+  owner_user_id TEXT NOT NULL,
+  project_id TEXT NOT NULL,
+  share_token TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL,
+  UNIQUE(owner_user_id, project_id),
+  FOREIGN KEY(owner_user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_shared_projects_owner ON shared_projects(owner_user_id);
+CREATE INDEX IF NOT EXISTS idx_shared_projects_project ON shared_projects(project_id);
+
+CREATE TABLE IF NOT EXISTS shared_project_members (
+  shared_project_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  joined_at TEXT NOT NULL,
+  PRIMARY KEY(shared_project_id, user_id),
+  FOREIGN KEY(shared_project_id) REFERENCES shared_projects(id) ON DELETE CASCADE,
+  FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_shared_project_members_user ON shared_project_members(user_id);
 `);
 
 const getUserByUsernameStmt = db.prepare('SELECT id, username, password_hash FROM users WHERE username = ?');
@@ -60,6 +82,48 @@ const writeUserStateStmt = db.prepare(`
     payload = excluded.payload,
     updated_at = excluded.updated_at
 `);
+const getSharedProjectByOwnerProjectStmt = db.prepare(`
+  SELECT sp.id, sp.owner_user_id, sp.project_id, sp.share_token, sp.created_at, u.username AS owner_username
+  FROM shared_projects sp
+  JOIN users u ON u.id = sp.owner_user_id
+  WHERE sp.owner_user_id = ? AND sp.project_id = ?
+`);
+const getSharedProjectByTokenStmt = db.prepare(`
+  SELECT sp.id, sp.owner_user_id, sp.project_id, sp.share_token, sp.created_at, u.username AS owner_username
+  FROM shared_projects sp
+  JOIN users u ON u.id = sp.owner_user_id
+  WHERE sp.share_token = ?
+`);
+const getMembershipForUserProjectStmt = db.prepare(`
+  SELECT sp.id, sp.owner_user_id, sp.project_id, sp.share_token, sp.created_at, u.username AS owner_username
+  FROM shared_project_members m
+  JOIN shared_projects sp ON sp.id = m.shared_project_id
+  JOIN users u ON u.id = sp.owner_user_id
+  WHERE m.user_id = ? AND sp.project_id = ?
+`);
+const listOwnedSharedProjectsStmt = db.prepare(`
+  SELECT sp.id, sp.owner_user_id, sp.project_id, sp.share_token, sp.created_at, u.username AS owner_username
+  FROM shared_projects sp
+  JOIN users u ON u.id = sp.owner_user_id
+  WHERE sp.owner_user_id = ?
+`);
+const listMembershipsForUserStmt = db.prepare(`
+  SELECT sp.id, sp.owner_user_id, sp.project_id, sp.share_token, sp.created_at, m.joined_at, u.username AS owner_username
+  FROM shared_project_members m
+  JOIN shared_projects sp ON sp.id = m.shared_project_id
+  JOIN users u ON u.id = sp.owner_user_id
+  WHERE m.user_id = ?
+`);
+const createSharedProjectStmt = db.prepare(`
+  INSERT INTO shared_projects (id, owner_user_id, project_id, share_token, created_at)
+  VALUES (?, ?, ?, ?, ?)
+`);
+const createSharedProjectMemberStmt = db.prepare(`
+  INSERT OR IGNORE INTO shared_project_members (shared_project_id, user_id, joined_at)
+  VALUES (?, ?, ?)
+`);
+const deleteSharedProjectStmt = db.prepare('DELETE FROM shared_projects WHERE id = ?');
+const deleteSharedProjectMemberStmt = db.prepare('DELETE FROM shared_project_members WHERE shared_project_id = ? AND user_id = ?');
 
 const contentTypeByExt = new Map([
   ['.html', 'text/html; charset=utf-8'],
@@ -85,7 +149,7 @@ function sendJson(res, status, body) {
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET,POST,PUT,OPTIONS',
+    'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   });
   res.end(JSON.stringify(body));
@@ -165,6 +229,153 @@ function writeStateByUserId(userId, state) {
   }
 }
 
+function stripProjectRuntimeFields(project) {
+  const { _share, ...cleanProject } = project || {};
+  return cleanProject;
+}
+
+function stripStateRuntimeFields(state) {
+  return {
+    ...(state || {}),
+    projects: Array.isArray(state?.projects) ? state.projects.map(stripProjectRuntimeFields) : [],
+    tasks: Array.isArray(state?.tasks) ? state.tasks.map((task) => ({ ...task })) : [],
+    settings: state?.settings && typeof state.settings === 'object' ? { ...state.settings } : {},
+  };
+}
+
+function projectSliceFromState(state, projectId) {
+  const project = state?.projects?.find((item) => item.id === projectId);
+  if (!project) return null;
+  return {
+    project: stripProjectRuntimeFields(project),
+    tasks: (state.tasks || [])
+      .filter((task) => task.projectId === projectId)
+      .map((task) => ({ ...task, projectId })),
+  };
+}
+
+function replaceProjectSlice(state, projectId, project, tasks) {
+  const cleanProject = { ...stripProjectRuntimeFields(project), id: projectId };
+  const cleanTasks = tasks.map((task) => ({ ...task, projectId }));
+
+  const nextProjects = (state.projects || []).filter((item) => item.id !== projectId);
+  const nextTasks = (state.tasks || []).filter((task) => task.projectId !== projectId);
+  nextProjects.push(cleanProject);
+  nextTasks.push(...cleanTasks);
+
+  return {
+    ...(state || {}),
+    projects: nextProjects,
+    tasks: nextTasks,
+    settings: state?.settings && typeof state.settings === 'object' ? { ...state.settings } : {},
+  };
+}
+
+function stateWithValidActiveProject(state) {
+  const projectIds = new Set((state.projects || []).map((project) => project.id));
+  if (state.settings?.activeProjectId && projectIds.has(state.settings.activeProjectId)) {
+    return state;
+  }
+  return {
+    ...state,
+    settings: {
+      ...(state.settings || {}),
+      activeProjectId: state.projects?.[0]?.id || null,
+    },
+  };
+}
+
+function shareUrlForRequest(req, token) {
+  const host = req.headers.host || `localhost:${PORT}`;
+  const proto = String(req.headers['x-forwarded-proto'] || 'http').split(',')[0].trim() || 'http';
+  return `${proto}://${host}/?join=${encodeURIComponent(token)}`;
+}
+
+function buildShareResponse(req, row) {
+  return {
+    projectId: row.project_id,
+    ownerUsername: row.owner_username,
+    token: row.share_token,
+    url: shareUrlForRequest(req, row.share_token),
+    createdAt: row.created_at,
+  };
+}
+
+function composeStateForUser(user) {
+  const baseState = readStateByUserId(user.id);
+  const ownedShares = listOwnedSharedProjectsStmt.all(user.id);
+  const memberships = listMembershipsForUserStmt.all(user.id);
+  if (!baseState && !memberships.length) return null;
+
+  let state = stripStateRuntimeFields(baseState || { projects: [], tasks: [], settings: {} });
+  const membershipProjectIds = new Set(memberships.map((row) => row.project_id));
+
+  state.projects = state.projects
+    .filter((project) => !membershipProjectIds.has(project.id))
+    .map((project) => {
+      const share = ownedShares.find((row) => row.project_id === project.id);
+      if (!share) return project;
+      return {
+        ...project,
+        _share: {
+          role: 'owner',
+          ownerUsername: user.username,
+          createdAt: share.created_at,
+        },
+      };
+    });
+  state.tasks = state.tasks.filter((task) => !membershipProjectIds.has(task.projectId));
+
+  memberships.forEach((membership) => {
+    const ownerState = readStateByUserId(membership.owner_user_id);
+    const slice = projectSliceFromState(ownerState, membership.project_id);
+    if (!slice) return;
+    state.projects.push({
+      ...slice.project,
+      _share: {
+        role: 'member',
+        ownerUsername: membership.owner_username,
+        joinedAt: membership.joined_at,
+      },
+    });
+    state.tasks.push(...slice.tasks);
+  });
+
+  return stateWithValidActiveProject(state);
+}
+
+function updateSharedProjectAsMember(membership, incomingState) {
+  const ownerState = readStateByUserId(membership.owner_user_id);
+  const incomingSlice = projectSliceFromState(incomingState, membership.project_id);
+  const ownerSlice = projectSliceFromState(ownerState, membership.project_id);
+  if (!incomingSlice || !ownerSlice) return;
+
+  const nextOwnerState = replaceProjectSlice(ownerState, membership.project_id, incomingSlice.project, incomingSlice.tasks);
+  writeStateByUserId(membership.owner_user_id, nextOwnerState);
+}
+
+function saveStateForUser(userId, incomingState) {
+  const cleanState = stripStateRuntimeFields(incomingState);
+  const memberships = listMembershipsForUserStmt.all(userId);
+  const membershipProjectIds = new Set(memberships.map((row) => row.project_id));
+
+  memberships.forEach((membership) => updateSharedProjectAsMember(membership, cleanState));
+
+  const personalState = {
+    ...cleanState,
+    projects: cleanState.projects.filter((project) => !membershipProjectIds.has(project.id)),
+    tasks: cleanState.tasks.filter((task) => !membershipProjectIds.has(task.projectId)),
+  };
+
+  listOwnedSharedProjectsStmt.all(userId).forEach((share) => {
+    if (!personalState.projects.some((project) => project.id === share.project_id)) {
+      deleteSharedProjectStmt.run(share.id);
+    }
+  });
+
+  writeStateByUserId(userId, personalState);
+}
+
 async function readRequestBody(req) {
   const chunks = [];
   for await (const chunk of req) chunks.push(chunk);
@@ -192,7 +403,7 @@ const server = createServer(async (req, res) => {
     if (req.method === 'OPTIONS') {
       res.writeHead(204, {
         'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET,POST,PUT,OPTIONS',
+        'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
       });
       return res.end();
@@ -269,12 +480,84 @@ const server = createServer(async (req, res) => {
       return sendJson(res, 200, { ok: true });
     }
 
+    if (pathname === '/api/share/join' && req.method === 'POST') {
+      const authed = getAuthedUser(req);
+      if (!authed) return sendJson(res, 401, { error: '未登录或会话已过期' });
+
+      const raw = await readRequestBody(req);
+      let body;
+      try {
+        body = JSON.parse(raw || '{}');
+      } catch {
+        return sendJson(res, 400, { error: 'Invalid JSON body' });
+      }
+
+      const token = String(body?.token || '').trim();
+      if (!token) return sendJson(res, 400, { error: '分享链接无效' });
+
+      const share = getSharedProjectByTokenStmt.get(token);
+      if (!share) return sendJson(res, 404, { error: '分享链接不存在或已失效' });
+
+      const ownerState = readStateByUserId(share.owner_user_id);
+      const slice = projectSliceFromState(ownerState, share.project_id);
+      if (!slice) {
+        deleteSharedProjectStmt.run(share.id);
+        return sendJson(res, 404, { error: '项目已不存在' });
+      }
+
+      if (share.owner_user_id !== authed.id) {
+        createSharedProjectMemberStmt.run(share.id, authed.id, nowISO());
+      }
+
+      return sendJson(res, 200, {
+        ok: true,
+        project: {
+          id: slice.project.id,
+          name: slice.project.name,
+        },
+        share: buildShareResponse(req, share),
+        role: share.owner_user_id === authed.id ? 'owner' : 'member',
+      });
+    }
+
+    const projectShareMatch = pathname.match(/^\/api\/projects\/([^/]+)\/share$/);
+    if (projectShareMatch && req.method === 'POST') {
+      const authed = getAuthedUser(req);
+      if (!authed) return sendJson(res, 401, { error: '未登录或会话已过期' });
+
+      const projectId = decodeURIComponent(projectShareMatch[1]);
+      const state = readStateByUserId(authed.id);
+      const slice = projectSliceFromState(state, projectId);
+      if (!slice) return sendJson(res, 404, { error: '只有项目创建者可以生成分享链接' });
+
+      let share = getSharedProjectByOwnerProjectStmt.get(authed.id, projectId);
+      if (!share) {
+        createSharedProjectStmt.run(randomUUID(), authed.id, projectId, randomBytes(24).toString('hex'), nowISO());
+        share = getSharedProjectByOwnerProjectStmt.get(authed.id, projectId);
+      }
+
+      return sendJson(res, 200, { share: buildShareResponse(req, share) });
+    }
+
+    const projectMembershipMatch = pathname.match(/^\/api\/projects\/([^/]+)\/membership$/);
+    if (projectMembershipMatch && req.method === 'DELETE') {
+      const authed = getAuthedUser(req);
+      if (!authed) return sendJson(res, 401, { error: '未登录或会话已过期' });
+
+      const projectId = decodeURIComponent(projectMembershipMatch[1]);
+      const membership = getMembershipForUserProjectStmt.get(authed.id, projectId);
+      if (!membership) return sendJson(res, 404, { error: '你不是该共享项目的成员' });
+
+      deleteSharedProjectMemberStmt.run(membership.id, authed.id);
+      return sendJson(res, 200, { ok: true });
+    }
+
     if (pathname === '/api/state') {
       const authed = getAuthedUser(req);
       if (!authed) return sendJson(res, 401, { error: '未登录或会话已过期' });
 
       if (req.method === 'GET') {
-        return sendJson(res, 200, { state: readStateByUserId(authed.id) });
+        return sendJson(res, 200, { state: composeStateForUser(authed) });
       }
 
       if (req.method === 'PUT') {
@@ -291,7 +574,7 @@ const server = createServer(async (req, res) => {
           return sendJson(res, 400, { error: 'Invalid state payload' });
         }
 
-        writeStateByUserId(authed.id, state);
+        saveStateForUser(authed.id, state);
         return sendJson(res, 200, { ok: true });
       }
 

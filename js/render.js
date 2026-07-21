@@ -16,6 +16,8 @@ import { escapeHtml, formatDate, formatDateTime, labelPriority, labelStatus, now
  * openProjectDialog: (projectId?: string | null) => void,
  * onDeleteTask: (taskId: string) => void,
  * onDeleteProject: (projectId: string) => void,
+ * onShareProject: (projectId: string) => void,
+ * onLeaveProject: (projectId: string) => void,
  * renderAll: () => void,
  * }} deps
  */
@@ -34,6 +36,8 @@ export function createRenderer(deps) {
     openProjectDialog,
     onDeleteTask,
     onDeleteProject,
+    onShareProject,
+    onLeaveProject,
     renderAll,
   } = deps;
   let activeDragId = null;
@@ -103,7 +107,7 @@ export function createRenderer(deps) {
           <strong>${escapeHtml(project.name)}</strong>
           <span style="width:10px;height:10px;border-radius:50%;background:${project.color}"></span>
         </div>
-        <div class="project-meta">${progress.done}/${progress.total} 已完成 · ${progress.ratio}%</div>
+        <div class="project-meta">${progress.done}/${progress.total} 已完成 · ${progress.ratio}%${project._share?.role === "member" ? ` · 来自 ${escapeHtml(project._share.ownerUsername || "创建者")}` : ""}${project._share?.role === "owner" ? " · 已开启协作" : ""}</div>
       `;
 
       item.addEventListener("click", () => {
@@ -593,22 +597,43 @@ export function createRenderer(deps) {
       const progress = taskService.projectProgress(project.id);
       el.detailEmpty.style.display = "none";
       const box = document.createElement("div");
+      const share = project._share || null;
+      const isMemberProject = share?.role === "member";
+      const shareInfo = share
+        ? `<p><strong>协作状态:</strong> ${isMemberProject ? `共享成员 · 创建者 ${escapeHtml(share.ownerUsername || "未知")}` : "创建者 · 已开启协作"}</p>`
+        : `<p><strong>协作状态:</strong> 仅自己可见</p>`;
+      const projectActions = isMemberProject
+        ? `
+          <button class="btn" id="d-edit-project">编辑项目</button>
+          <button class="btn btn-danger" id="d-leave-project">退出项目</button>
+        `
+        : `
+          <button class="btn" id="d-edit-project">编辑项目</button>
+          <button class="btn" id="d-share-project">分享项目</button>
+          <button class="btn btn-danger" id="d-delete-project">删除项目</button>
+        `;
+
       box.innerHTML = `
         <div class="detail-block">
           <h3>${escapeHtml(project.name)}</h3>
           <p class="small">${escapeHtml(project.description || "无描述")}</p>
           <p><strong>任务进度:</strong> ${progress.done}/${progress.total} (${progress.ratio}%)</p>
           <p><strong>创建时间:</strong> ${escapeHtml(formatDateTime(project.createdAt))}</p>
+          ${shareInfo}
         </div>
         <div class="detail-block">
-          <button class="btn" id="d-edit-project">编辑项目</button>
-          <button class="btn btn-danger" id="d-delete-project">删除项目</button>
+          ${projectActions}
         </div>
       `;
 
       el.detailContent.appendChild(box);
       document.getElementById("d-edit-project").addEventListener("click", () => openProjectDialog(project.id));
-      document.getElementById("d-delete-project").addEventListener("click", () => onDeleteProject(project.id));
+      const shareButton = document.getElementById("d-share-project");
+      if (shareButton) shareButton.addEventListener("click", () => onShareProject(project.id));
+      const leaveButton = document.getElementById("d-leave-project");
+      if (leaveButton) leaveButton.addEventListener("click", () => onLeaveProject(project.id));
+      const deleteButton = document.getElementById("d-delete-project");
+      if (deleteButton) deleteButton.addEventListener("click", () => onDeleteProject(project.id));
       return;
     }
 

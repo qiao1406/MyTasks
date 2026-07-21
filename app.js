@@ -83,6 +83,7 @@ let selectedProjectIdForDetail = null;
 let persistQueue = Promise.resolve();
 let authToken = localStorage.getItem(TOKEN_KEY) || "";
 let currentUser = null;
+let pendingJoinToken = new URLSearchParams(window.location.search).get("join") || "";
 
 const request = (path, options = {}) =>
   apiFetch(path, options, {
@@ -121,6 +122,76 @@ const taskService = createTaskService({
 
 let renderAll = () => {};
 
+function clearJoinTokenFromUrl() {
+  if (!pendingJoinToken) return;
+  pendingJoinToken = "";
+  const url = new URL(window.location.href);
+  url.searchParams.delete("join");
+  window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+async function copyShareUrl(url) {
+  try {
+    await navigator.clipboard.writeText(url);
+    alert("分享链接已复制。");
+  } catch {
+    window.prompt("分享链接已生成，请复制：", url);
+  }
+}
+
+async function consumePendingJoinToken() {
+  if (!pendingJoinToken || !authToken) return false;
+
+  try {
+    const data = await request("/api/share/join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: pendingJoinToken }),
+    });
+    clearJoinTokenFromUrl();
+    alert(`已加入项目「${data.project?.name || "共享项目"}」。`);
+    return true;
+  } catch (err) {
+    clearJoinTokenFromUrl();
+    alert(`加入项目失败：${formatPersistError(err)}`);
+    return false;
+  }
+}
+
+async function handleShareProject(projectId) {
+  try {
+    const data = await request(`/api/projects/${encodeURIComponent(projectId)}/share`, { method: "POST" });
+    const project = taskService.projectById(projectId);
+    if (project) {
+      project._share = {
+        role: "owner",
+        ownerUsername: currentUser?.username || "",
+        createdAt: data.share?.createdAt,
+      };
+      renderAll();
+    }
+    await copyShareUrl(data.share.url);
+  } catch (err) {
+    alert(`生成分享链接失败：${formatPersistError(err)}`);
+  }
+}
+
+async function handleLeaveProject(projectId) {
+  const project = taskService.projectById(projectId);
+  if (!project) return;
+
+  const ok = confirm(`确认退出共享项目「${project.name}」吗？退出后不会删除创建者的项目和任务。`);
+  if (!ok) return;
+
+  try {
+    await request(`/api/projects/${encodeURIComponent(projectId)}/membership`, { method: "DELETE" });
+    await loadUserState();
+    alert("已退出共享项目。");
+  } catch (err) {
+    alert(`退出项目失败：${formatPersistError(err)}`);
+  }
+}
+
 /**
  * 删除任务前进行二次确认，确认后更新选择态并刷新页面。
  * @param {string} taskId
@@ -143,12 +214,17 @@ function handleDeleteTask(taskId) {
  * @param {string} projectId
  */
 function handleDeleteProject(projectId) {
+  const project = taskService.projectById(projectId);
+  if (project?._share?.role === "member") {
+    alert("共享项目成员不能删除项目，可以选择退出项目。");
+    return;
+  }
+
   if (state.projects.length <= 1) {
     alert("至少需要保留一个项目。");
     return;
   }
 
-  const project = taskService.projectById(projectId);
   if (!project) return;
   const relatedCount = state.tasks.filter((task) => task.projectId === projectId).length;
   const ok = confirm(`确认删除项目「${project.name}」吗？项目下 ${relatedCount} 个任务也会被删除。`);
@@ -180,6 +256,8 @@ const renderer = createRenderer({
   openProjectDialog,
   onDeleteTask: handleDeleteTask,
   onDeleteProject: handleDeleteProject,
+  onShareProject: handleShareProject,
+  onLeaveProject: handleLeaveProject,
   renderAll: () => renderAll(),
 });
 
@@ -417,6 +495,7 @@ function wireEvents() {
       setAuthScreenVisible(el, false);
       setAuthMessage(el, "");
       await loadUserState();
+      if (await consumePendingJoinToken()) await loadUserState();
     } catch (err) {
       setAuthMessage(el, err.message || "登录失败", true);
     }
@@ -442,6 +521,7 @@ function wireEvents() {
       setAuthScreenVisible(el, false);
       setAuthMessage(el, "");
       await loadUserState();
+      if (await consumePendingJoinToken()) await loadUserState();
     } catch (err) {
       setAuthMessage(el, err.message || "注册失败", true);
     }
@@ -572,6 +652,7 @@ async function bootstrapAuth() {
     });
     setAuthScreenVisible(el, false);
     await loadUserState();
+    if (await consumePendingJoinToken()) await loadUserState();
   } catch {
     clearAuth({
       el,
