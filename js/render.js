@@ -311,7 +311,7 @@ export function createRenderer(deps) {
     const hasTagFilter = Boolean(getState().settings.filters.tag.trim());
 
     if (!top.length) {
-      root.innerHTML = `<p class="small">暂无任务，点击左侧“新建任务”开始。</p>`;
+      root.innerHTML = `<p class="small">暂无任务，点击右下角 + 开始。</p>`;
       return root;
     }
 
