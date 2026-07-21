@@ -303,21 +303,34 @@ body {
   border-bottom: 1px solid var(--border);
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 10px;
   justify-content: space-between;
 }
 
 .topbar-right {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
+  flex: 1 1 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
   gap: 8px;
+  min-width: 0;
 }
 
 .userbar {
-  display: flex;
+  display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 8px;
+  max-width: 100%;
+}
+
+.userbar .small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .view-tabs {
@@ -344,8 +357,11 @@ body {
 
 .filters {
   display: flex;
+  flex: 1 1 420px;
   flex-wrap: wrap;
   gap: 8px;
+  justify-content: flex-end;
+  min-width: 0;
 }
 
 select,
@@ -1066,11 +1082,16 @@ textarea {
   }
 
   .topbar {
-    flex-direction: column;
+    align-items: stretch;
   }
 
   .topbar-right {
+    justify-content: flex-start;
     align-items: stretch;
+  }
+
+  .filters {
+    justify-content: flex-start;
   }
 
   .subtask-list-item {
