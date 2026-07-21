@@ -32,7 +32,6 @@ const el = {
   detailContent: document.getElementById("detail-content"),
 
   btnNewProject: document.getElementById("btn-new-project"),
-  btnNewTask: document.getElementById("btn-new-task"),
   btnWorkspaceAddTask: document.getElementById("btn-workspace-add-task"),
 
   filterStatus: document.getElementById("filter-status"),
@@ -396,7 +395,6 @@ function submitProjectForm(event) {
  */
 function wireEvents() {
   el.btnNewProject.addEventListener("click", () => openProjectDialog());
-  el.btnNewTask.addEventListener("click", () => openTaskDialog());
   el.btnWorkspaceAddTask.addEventListener("click", () => openTaskDialog());
 
   el.btnLogin.addEventListener("click", async () => {
