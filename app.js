@@ -73,6 +73,10 @@ const el = {
   projectName: document.getElementById("project-name"),
   projectDesc: document.getElementById("project-desc"),
   projectColor: document.getElementById("project-color"),
+  projectCreateSection: document.getElementById("project-create-section"),
+  projectJoinSection: document.getElementById("project-join-section"),
+  projectJoinCode: document.getElementById("project-join-code"),
+  btnJoinProject: document.getElementById("btn-join-project"),
   btnCancelProject: document.getElementById("btn-cancel-project"),
 };
 
@@ -121,6 +125,87 @@ const taskService = createTaskService({
 
 let renderAll = () => {};
 
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function handleShareProject(projectId) {
+  try {
+    const data = await request(`/api/projects/${encodeURIComponent(projectId)}/share-code`, { method: "POST" });
+    const code = data.share?.code || "";
+    const expiresAt = data.share?.expiresAt ? new Date(data.share.expiresAt).toLocaleString("zh-CN") : "24小时后";
+    const copied = code ? await copyText(code) : false;
+    const project = taskService.projectById(projectId);
+    if (project) {
+      project._share = {
+        role: "owner",
+        ownerUsername: currentUser?.username || "",
+        codeExpiresAt: data.share?.expiresAt,
+      };
+      renderAll();
+    }
+    alert(`分享码：${code}\n有效期至：${expiresAt}${copied ? "\n已复制到剪贴板。" : ""}`);
+  } catch (err) {
+    alert(`生成分享码失败：${formatPersistError(err)}`);
+  }
+}
+
+async function handleJoinSharedProject() {
+  const code = el.projectJoinCode.value.trim().toUpperCase();
+  if (!/^[A-Z0-9]{6}$/.test(code)) {
+    alert("请输入6位字母或数字分享码。");
+    return;
+  }
+
+  el.btnJoinProject.disabled = true;
+  el.btnJoinProject.textContent = "加入中...";
+  try {
+    const data = await request("/api/share/join-code", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    });
+    await loadUserState();
+    const projectId = data.project?.id || null;
+    if (projectId && state.projects.some((project) => project.id === projectId)) {
+      state.settings.activeProjectId = projectId;
+      selectedProjectIdForDetail = projectId;
+      selectedTaskId = null;
+      saveState();
+    }
+    el.projectDialog.close();
+    el.projectJoinCode.value = "";
+    renderAll();
+    alert(`已加入共享项目「${data.project?.name || "共享项目"}」。`);
+  } catch (err) {
+    alert(`加入共享项目失败：${formatPersistError(err)}`);
+  } finally {
+    el.btnJoinProject.disabled = false;
+    el.btnJoinProject.textContent = "加入";
+  }
+}
+
+async function handleLeaveProject(projectId) {
+  const project = taskService.projectById(projectId);
+  if (!project) return;
+
+  const ok = confirm(`确认退出共享项目「${project.name}」吗？退出后不会删除创建者的项目和任务。`);
+  if (!ok) return;
+
+  try {
+    await request(`/api/projects/${encodeURIComponent(projectId)}/membership`, { method: "DELETE" });
+    await loadUserState();
+    alert("已退出共享项目。");
+  } catch (err) {
+    alert(`退出项目失败：${formatPersistError(err)}`);
+  }
+}
+
 /**
  * 删除任务前进行二次确认，确认后更新选择态并刷新页面。
  * @param {string} taskId
@@ -143,12 +228,17 @@ function handleDeleteTask(taskId) {
  * @param {string} projectId
  */
 function handleDeleteProject(projectId) {
+  const project = taskService.projectById(projectId);
+  if (project?._share?.role === "member") {
+    alert("共享项目成员不能删除项目，可以选择退出项目。");
+    return;
+  }
+
   if (state.projects.length <= 1) {
     alert("至少需要保留一个项目。");
     return;
   }
 
-  const project = taskService.projectById(projectId);
   if (!project) return;
   const relatedCount = state.tasks.filter((task) => task.projectId === projectId).length;
   const ok = confirm(`确认删除项目「${project.name}」吗？项目下 ${relatedCount} 个任务也会被删除。`);
@@ -180,6 +270,8 @@ const renderer = createRenderer({
   openProjectDialog,
   onDeleteTask: handleDeleteTask,
   onDeleteProject: handleDeleteProject,
+  onShareProject: handleShareProject,
+  onLeaveProject: handleLeaveProject,
   renderAll: () => renderAll(),
 });
 
@@ -352,17 +444,20 @@ function openProjectDialog(projectId = null) {
     const project = taskService.projectById(projectId);
     if (!project) return;
 
+    el.projectJoinSection.style.display = "none";
     el.projectDialogTitle.textContent = "编辑项目";
     el.projectId.value = project.id;
     el.projectName.value = project.name;
     el.projectDesc.value = project.description || "";
     el.projectColor.value = project.color || "#2b8a78";
   } else {
+    el.projectJoinSection.style.display = "";
     el.projectDialogTitle.textContent = "新建项目";
     el.projectId.value = "";
     el.projectName.value = "";
     el.projectDesc.value = "";
     el.projectColor.value = "#2b8a78";
+    el.projectJoinCode.value = "";
   }
 
   el.projectDialog.showModal();
@@ -481,6 +576,10 @@ function wireEvents() {
 
   el.taskForm.addEventListener("submit", submitTaskForm);
   el.projectForm.addEventListener("submit", submitProjectForm);
+  el.btnJoinProject.addEventListener("click", handleJoinSharedProject);
+  el.projectJoinCode.addEventListener("input", () => {
+    el.projectJoinCode.value = el.projectJoinCode.value.toUpperCase();
+  });
   el.btnCancelTask.addEventListener("click", () => el.taskDialog.close());
   el.btnCancelProject.addEventListener("click", () => el.projectDialog.close());
 

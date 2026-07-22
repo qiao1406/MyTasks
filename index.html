@@ -171,9 +171,18 @@
       <form id="project-form" method="dialog" class="modal-body">
         <h3 id="project-dialog-title">新建项目</h3>
         <input type="hidden" id="project-id" />
-        <label>项目名*<input id="project-name" required maxlength="80" /></label>
-        <label>描述<textarea id="project-desc" rows="3"></textarea></label>
-        <label>封面色<input id="project-color" type="color" value="#2097d8" /></label>
+        <section id="project-create-section" class="project-form-section">
+          <label>项目名*<input id="project-name" required maxlength="80" /></label>
+          <label>描述<textarea id="project-desc" rows="3"></textarea></label>
+          <label>封面色<input id="project-color" type="color" value="#2097d8" /></label>
+        </section>
+        <section id="project-join-section" class="project-form-section project-join-section">
+          <div class="project-section-title">加入共享项目</div>
+          <div class="join-project-row">
+            <input id="project-join-code" type="text" maxlength="6" autocomplete="off" placeholder="输入6位分享码" />
+            <button type="button" class="btn" id="btn-join-project">加入</button>
+          </div>
+        </section>
         <div class="modal-actions">
           <button type="button" class="btn" id="btn-cancel-project">取消</button>
           <button type="submit" class="btn btn-primary">保存</button>
