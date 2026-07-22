@@ -174,6 +174,35 @@ body {
   text-align: center;
 }
 
+.project-form-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.project-join-section {
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  padding-top: 12px;
+}
+
+.project-section-title {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.join-project-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.join-project-row input {
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
 .panel {
   border: 1px solid var(--border);
   border-radius: 14px;
