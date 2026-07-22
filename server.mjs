@@ -54,7 +54,6 @@ CREATE TABLE IF NOT EXISTS shared_projects (
 );
 CREATE INDEX IF NOT EXISTS idx_shared_projects_owner ON shared_projects(owner_user_id);
 CREATE INDEX IF NOT EXISTS idx_shared_projects_project ON shared_projects(project_id);
-CREATE INDEX IF NOT EXISTS idx_shared_projects_code ON shared_projects(share_code);
 
 CREATE TABLE IF NOT EXISTS shared_project_members (
   shared_project_id TEXT NOT NULL,
