@@ -349,6 +349,16 @@ body {
   gap: 8px;
 }
 
+.sidebar-userbar {
+  align-items: flex-start;
+  flex-direction: column;
+  padding: 0 12px;
+}
+
+.sidebar-userbar .btn {
+  width: 100%;
+}
+
 .view-tabs {
   display: inline-flex;
   background: var(--bg-soft);
