@@ -160,7 +160,15 @@
           <label>截止日期<input id="task-due" type="date" /></label>
           <label>标签（逗号分隔）<input id="task-tags" placeholder="frontend,bug" /></label>
         </div>
-        <label>附件路径/链接<input id="task-attachment" placeholder="/Users/me/file.pdf" /></label>
+        <div class="form-field attachment-field">
+          <span class="field-label">附件</span>
+          <input id="task-attachment" type="hidden" />
+          <div class="attachment-row">
+            <label class="btn file-btn attachment-file-btn">选择文件<input id="task-attachment-file" type="file" /></label>
+            <span id="task-attachment-meta" class="small attachment-meta">未选择文件</span>
+            <button type="button" class="btn" id="btn-clear-task-attachment">清除</button>
+          </div>
+        </div>
         <div class="modal-actions">
           <button type="button" class="btn" id="btn-cancel-task">取消</button>
           <button type="submit" class="btn btn-primary">保存</button>
