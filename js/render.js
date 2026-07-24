@@ -1,4 +1,4 @@
-import { escapeHtml, formatDate, formatDateTime, labelPriority, labelStatus, nowISO, todayDateOnly, visualStatus } from "./utils.js";
+import { escapeHtml, formatDate, formatDateTime, labelPriority, labelStatus, labelUrgency, nowISO, todayDateOnly, visualStatus } from "./utils.js";
 
 /**
  * 创建渲染器，集中生成列表/看板/日历/详情等 UI。
@@ -139,6 +139,7 @@ export function createRenderer(deps) {
     row.dataset.id = task.id;
     row.dataset.level = String(level);
     row.dataset.priority = task.priority;
+    row.dataset.urgent = task.urgent === true ? "true" : "false";
     row.dataset.visualStatus = visualStatus(task);
     if (isTopLevel && !usesManualTopLevelSort) {
       row.dataset.dragDisabledReason = "sorted";
@@ -187,6 +188,7 @@ export function createRenderer(deps) {
       </div>
       ${description ? `<div class="task-desc ${doneClass}">${escapeHtml(description)}</div>` : ""}
       <div class="task-sub">
+        <span>紧急程度: ${labelUrgency(task.urgent === true)}</span>
         <span>优先级: ${labelPriority(task.priority)}</span>
         <span>截止: ${formatDate(task.dueDate)}</span>
         <span>负责人: ${escapeHtml(task.assignee || "未分配")}</span>
@@ -210,6 +212,7 @@ export function createRenderer(deps) {
         </div>
         ${description ? `<div class="task-desc ${doneClass}">${escapeHtml(description)}</div>` : ""}
         <div class="task-sub">
+          <span>紧急程度: ${labelUrgency(task.urgent === true)}</span>
           <span>优先级: ${labelPriority(task.priority)}</span>
           <span>截止: ${formatDate(task.dueDate)}</span>
           <span>负责人: ${escapeHtml(task.assignee || "未分配")}</span>
@@ -351,26 +354,31 @@ export function createRenderer(deps) {
    */
   function renderKanbanView() {
     const filtered = taskService.filteredTasks();
-    const top = taskService.topLevelTasks(filtered);
-    const visibleIds = new Set(filtered.map((task) => task.id));
-    const hasTagFilter = Boolean(getState().settings.filters.tag.trim());
     const board = document.createElement("div");
     board.className = "kanban";
 
-    const columns = [
-      ["todo", "待处理"],
-      ["suspended", "已挂起"],
-      ["done", "已完成"],
+    const quadrants = [
+      { title: "紧急 × 高优", urgent: true, priorityGroup: "high" },
+      { title: "紧急 × 非高优", urgent: true, priorityGroup: "nonHigh" },
+      { title: "不紧急 × 高优", urgent: false, priorityGroup: "high" },
+      { title: "不紧急 × 非高优", urgent: false, priorityGroup: "nonHigh" },
     ];
 
-    columns.forEach(([status, title]) => {
+    quadrants.forEach((quadrant) => {
       const col = document.createElement("section");
       col.className = "kanban-col";
-      col.dataset.status = status;
-      col.innerHTML = `<h4>${title}</h4>`;
+      col.dataset.urgent = quadrant.urgent ? "true" : "false";
+      col.dataset.priorityGroup = quadrant.priorityGroup;
+      col.innerHTML = `<h4>${quadrant.title}</h4>`;
 
-      const items = top.filter((task) => task.status === status);
-      items.forEach((task) => appendTaskTree(col, task, 0, { hasTagFilter, visibleIds }));
+      const items = taskService.sortTasksForBoard(
+        filtered.filter((task) => {
+          const isHighPriority = task.priority === "high";
+          const matchesPriorityGroup = quadrant.priorityGroup === "high" ? isHighPriority : !isHighPriority;
+          return (task.urgent === true) === quadrant.urgent && matchesPriorityGroup;
+        })
+      );
+      items.forEach((task) => col.appendChild(buildTaskRow(task, task.parentId ? 1 : 0)));
 
       col.addEventListener("dragover", (event) => {
         event.preventDefault();
@@ -379,7 +387,7 @@ export function createRenderer(deps) {
       col.addEventListener("drop", (event) => {
         event.preventDefault();
         const taskId = event.dataTransfer.getData("text/plain");
-        if (taskService.updateTaskStatus(taskId, status)) renderAll();
+        if (taskService.updateTaskQuadrant(taskId, quadrant)) renderAll();
       });
 
       board.appendChild(col);
@@ -517,6 +525,7 @@ export function createRenderer(deps) {
           <h3>${escapeHtml(task.title)}</h3>
           <p class="small">${escapeHtml(task.description || "无描述")}</p>
           <p><strong>状态:</strong> ${labelStatus(task.status)}</p>
+          <p><strong>紧急程度:</strong> ${labelUrgency(task.urgent === true)}</p>
           <p><strong>优先级:</strong> ${labelPriority(task.priority)}</p>
           <p><strong>项目:</strong> ${escapeHtml(project ? project.name : "未知")}</p>
           <p><strong>截止日期:</strong> ${formatDate(task.dueDate)}</p>

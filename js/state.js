@@ -100,8 +100,12 @@ export function normalizeState(candidate, initialState) {
     if (normalizedTask.status === "in_progress" || !["todo", "suspended", "done"].includes(normalizedTask.status)) {
       normalizedTask.status = "todo";
     }
+    if (!["low", "medium", "high"].includes(normalizedTask.priority)) {
+      normalizedTask.priority = "medium";
+    }
     if (!normalizedTask.createdAt) normalizedTask.createdAt = nowISO();
     if (!normalizedTask.updatedAt) normalizedTask.updatedAt = normalizedTask.createdAt;
+    normalizedTask.urgent = normalizedTask.urgent === true;
     normalizedTask.completedAt = normalizedTask.status === "done" ? normalizedTask.completedAt || null : null;
     normalizedTask.comments = normalizeTaskComments(task.comments);
     return normalizedTask;

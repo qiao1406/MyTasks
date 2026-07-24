@@ -61,6 +61,7 @@ const el = {
   taskAssignee: document.getElementById("task-assignee"),
   taskStatus: document.getElementById("task-status"),
   taskPriority: document.getElementById("task-priority"),
+  taskUrgent: document.getElementById("task-urgent"),
   taskDue: document.getElementById("task-due"),
   taskTags: document.getElementById("task-tags"),
   taskAttachment: document.getElementById("task-attachment"),
@@ -341,6 +342,7 @@ function openTaskDialog(taskId = null, parentId = null) {
     syncTaskStatusOptions(task.status);
     el.taskStatus.value = task.status;
     el.taskPriority.value = task.priority;
+    el.taskUrgent.value = task.urgent === true ? "true" : "false";
     el.taskDue.value = task.dueDate ? task.dueDate.slice(0, 10) : "";
     el.taskTags.value = (task.tags || []).join(",");
     el.taskAttachment.value = task.attachment || "";
@@ -355,6 +357,7 @@ function openTaskDialog(taskId = null, parentId = null) {
     el.taskStatus.value = "todo";
     syncTaskStatusOptions("todo");
     el.taskPriority.value = "medium";
+    el.taskUrgent.value = "false";
     el.taskDue.value = "";
     el.taskTags.value = "";
     el.taskAttachment.value = "";
@@ -399,6 +402,7 @@ async function submitTaskForm(event) {
     assignee: el.taskAssignee.value.trim(),
     status: el.taskStatus.value,
     priority: el.taskPriority.value,
+    urgent: el.taskUrgent.value === "true",
     dueDate: el.taskDue.value ? new Date(`${el.taskDue.value}T00:00:00`).toISOString() : null,
     tags: el.taskTags.value
       .split(",")

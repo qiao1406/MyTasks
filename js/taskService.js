@@ -188,6 +188,14 @@ export function createTaskService(deps) {
   }
 
   /**
+   * 按“未完成优先 + 排序号”排序任意层级任务。
+   * @param {Array<any>} tasks
+   */
+  function sortTasksForBoard(tasks) {
+    return sortTasksDoneLast(tasks);
+  }
+
+  /**
    * 按设置排序一级任务，默认保留手动顺序。
    * @param {Array<any>} tasks
    */
@@ -362,7 +370,7 @@ export function createTaskService(deps) {
       if (!task) return null;
       const status = canSetTaskStatus(task, payload.status) ? normalizeTaskStatus(payload.status) : task.status;
       const timestamp = nowISO();
-      Object.assign(task, { ...payload, status, completedAt: completionTimeForStatus(task, status, timestamp) }, { updatedAt: timestamp });
+      Object.assign(task, { ...payload, urgent: payload.urgent === true, status, completedAt: completionTimeForStatus(task, status, timestamp) }, { updatedAt: timestamp });
       const persistResult = saveState();
       return { task, created: false, persistResult };
     }
@@ -376,6 +384,7 @@ export function createTaskService(deps) {
     const task = {
       id: uid(),
       ...payload,
+      urgent: payload.urgent === true,
       status,
       comments: [],
       order: siblingCount,
@@ -546,6 +555,23 @@ export function createTaskService(deps) {
     return true;
   }
 
+  /**
+   * 更新任务在紧急/优先级四象限中的位置。
+   * @param {string} taskId
+   * @param {{ urgent: boolean, priorityGroup: "high" | "nonHigh" }} quadrant
+   * @returns {boolean}
+   */
+  function updateTaskQuadrant(taskId, quadrant) {
+    const task = taskById(taskId);
+    if (!task) return false;
+
+    task.urgent = quadrant.urgent === true;
+    task.priority = quadrant.priorityGroup === "high" ? "high" : "medium";
+    task.updatedAt = nowISO();
+    saveState();
+    return true;
+  }
+
   return {
     taskById,
     childrenOf,
@@ -554,6 +580,7 @@ export function createTaskService(deps) {
     directSubtaskProgress,
     filteredTasks,
     sortTasksDoneLast,
+    sortTasksForBoard,
     sortTopLevelTasks,
     topLevelTasks,
     toggleTask,
@@ -564,6 +591,7 @@ export function createTaskService(deps) {
     reorderTask,
     moveTaskUnderParent,
     updateTaskStatus,
+    updateTaskQuadrant,
     addTaskComment,
     collectDescendants,
   };
