@@ -849,12 +849,12 @@ textarea {
 .kanban {
   display: grid;
   grid-template-columns: repeat(2, minmax(220px, 1fr));
-  gap: 10px;
+  gap: 12px;
 }
 
 .kanban-col {
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 8px;
   background: var(--bg-soft);
   padding: 8px;
   min-height: 420px;
@@ -862,6 +862,15 @@ textarea {
 
 .kanban-col h4 {
   margin: 0 0 8px;
+}
+
+.kanban-col[data-urgent="true"] {
+  border-color: rgba(229, 62, 62, 0.36);
+  background: rgba(229, 62, 62, 0.06);
+}
+
+.kanban-col[data-priority-group="high"] h4 {
+  color: #b83232;
 }
 
 .calendar {
