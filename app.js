@@ -65,6 +65,9 @@ const el = {
   taskDue: document.getElementById("task-due"),
   taskTags: document.getElementById("task-tags"),
   taskAttachment: document.getElementById("task-attachment"),
+  taskAttachmentFile: document.getElementById("task-attachment-file"),
+  taskAttachmentMeta: document.getElementById("task-attachment-meta"),
+  btnClearTaskAttachment: document.getElementById("btn-clear-task-attachment"),
   btnCancelTask: document.getElementById("btn-cancel-task"),
 
   projectDialog: document.getElementById("project-dialog"),
@@ -88,6 +91,7 @@ let selectedProjectIdForDetail = null;
 let persistQueue = Promise.resolve();
 let authToken = localStorage.getItem(TOKEN_KEY) || "";
 let currentUser = null;
+const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;
 
 const request = (path, options = {}) =>
   apiFetch(path, options, {
@@ -290,6 +294,76 @@ function formatPersistError(error) {
   return message;
 }
 
+function formatFileSize(bytes) {
+  if (!Number.isFinite(bytes)) return "";
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))}KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+}
+
+function attachmentDisplayName(attachment) {
+  const value = String(attachment || "");
+  if (!value) return "";
+  try {
+    return decodeURIComponent(value.split("/").pop() || value);
+  } catch {
+    return value.split("/").pop() || value;
+  }
+}
+
+function updateTaskAttachmentMeta() {
+  const file = el.taskAttachmentFile.files?.[0];
+  if (file) {
+    el.taskAttachmentMeta.textContent = `${file.name} (${formatFileSize(file.size)})`;
+    return;
+  }
+
+  const attachment = el.taskAttachment.value.trim();
+  el.taskAttachmentMeta.textContent = attachment ? `已上传：${attachmentDisplayName(attachment)}` : "未选择文件";
+}
+
+function resetTaskAttachmentInput(attachment = "") {
+  el.taskAttachment.value = attachment;
+  el.taskAttachmentFile.value = "";
+  updateTaskAttachmentMeta();
+}
+
+async function uploadTaskAttachment(file, uploadName = file.name) {
+  if (!file) return null;
+  if (file.size > MAX_ATTACHMENT_BYTES) {
+    throw new Error("附件大小不能超过50MB");
+  }
+
+  const body = new FormData();
+  body.append("attachment", file, uploadName);
+  try {
+    return await request("/api/uploads", {
+      method: "POST",
+      body,
+    });
+  } catch (err) {
+    const conflict = err?.status === 409 ? err.body?.conflict : null;
+    if (conflict?.url) {
+      const conflictName = conflict.name || uploadName;
+      const useExisting = confirm(`已存在同名附件「${conflictName}」。\n\n确定：直接使用已有文件\n取消：为本次上传输入新文件名`);
+      if (useExisting) {
+        return {
+          attachment: {
+            url: conflict.url,
+            name: conflictName,
+            size: file.size,
+          },
+        };
+      }
+
+      const nextName = prompt("请输入新的附件文件名", uploadName);
+      if (!nextName) throw new Error("请重新选择附件或输入新的文件名");
+      if (nextName === conflictName) throw new Error("新文件名不能与现有附件同名");
+      return uploadTaskAttachment(file, nextName);
+    }
+    throw err;
+  }
+}
+
 /**
  * 更新筛选条件，支持输入防抖刷新。
  * @param {"status" | "priority" | "tag" | "due" | "search"} key
@@ -345,7 +419,7 @@ function openTaskDialog(taskId = null, parentId = null) {
     el.taskUrgent.value = task.urgent === true ? "true" : "false";
     el.taskDue.value = task.dueDate ? task.dueDate.slice(0, 10) : "";
     el.taskTags.value = (task.tags || []).join(",");
-    el.taskAttachment.value = task.attachment || "";
+    resetTaskAttachmentInput(task.attachment || "");
   } else {
     el.taskDialogTitle.textContent = parentId ? "新建子任务" : "新建任务";
     el.taskId.value = "";
@@ -360,7 +434,7 @@ function openTaskDialog(taskId = null, parentId = null) {
     el.taskUrgent.value = "false";
     el.taskDue.value = "";
     el.taskTags.value = "";
-    el.taskAttachment.value = "";
+    resetTaskAttachmentInput();
   }
 
   el.taskDialog.showModal();
@@ -394,7 +468,7 @@ async function submitTaskForm(event) {
     submitButton.disabled = true;
     submitButton.textContent = "保存中...";
   }
-
+  
   const payload = {
     title: el.taskTitle.value.trim(),
     description: el.taskDesc.value.trim(),
@@ -413,6 +487,26 @@ async function submitTaskForm(event) {
   };
 
   try {
+    const selectedAttachment = el.taskAttachmentFile.files?.[0] || null;
+    const uploadResult = selectedAttachment ? await uploadTaskAttachment(selectedAttachment) : null;
+    const attachment = uploadResult?.attachment?.url || el.taskAttachment.value.trim();
+
+    const payload = {
+      title: el.taskTitle.value.trim(),
+      description: el.taskDesc.value.trim(),
+      projectId: el.taskProject.value,
+      assignee: el.taskAssignee.value.trim(),
+      status: el.taskStatus.value,
+      priority: el.taskPriority.value,
+      dueDate: el.taskDue.value ? new Date(`${el.taskDue.value}T00:00:00`).toISOString() : null,
+      tags: el.taskTags.value
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean),
+      attachment,
+      parentId: el.taskParentId.value || null,
+    };
+
     const result = taskService.upsertTask(payload, el.taskId.value || null);
     if (!result) return;
 
@@ -431,6 +525,8 @@ async function submitTaskForm(event) {
 
     el.taskDialog.close();
     renderAll();
+  } catch (err) {
+    alert(`保存任务失败：${formatPersistError(err)}`);
   } finally {
     if (submitButton) {
       submitButton.disabled = false;
@@ -579,6 +675,15 @@ function wireEvents() {
   el.searchText.addEventListener("input", () => setFilter("search", el.searchText.value, false));
 
   el.taskForm.addEventListener("submit", submitTaskForm);
+  el.taskAttachmentFile.addEventListener("change", () => {
+    const file = el.taskAttachmentFile.files?.[0];
+    if (file && file.size > MAX_ATTACHMENT_BYTES) {
+      alert("附件大小不能超过50MB");
+      el.taskAttachmentFile.value = "";
+    }
+    updateTaskAttachmentMeta();
+  });
+  el.btnClearTaskAttachment.addEventListener("click", () => resetTaskAttachmentInput());
   el.projectForm.addEventListener("submit", submitProjectForm);
   el.btnJoinProject.addEventListener("click", handleJoinSharedProject);
   el.projectJoinCode.addEventListener("input", () => {

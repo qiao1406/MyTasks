@@ -1,6 +1,7 @@
 import { createServer } from 'node:http';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { randomBytes, scryptSync, timingSafeEqual, randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
@@ -8,11 +9,16 @@ import { DatabaseSync } from 'node:sqlite';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PORT = Number(process.env.PORT || 8787);
+const HOST = process.env.HOST || '0.0.0.0';
 const SESSION_TTL_DAYS = 30;
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+const UPLOAD_FORM_OVERHEAD_BYTES = 1024 * 1024;
 
 const dataDir = path.join(__dirname, 'data');
+const uploadDir = path.join(dataDir, 'uploads');
 const dbPath = path.join(dataDir, 'taskflow.db');
 await fs.mkdir(dataDir, { recursive: true });
+await fs.mkdir(uploadDir, { recursive: true });
 
 const db = new DatabaseSync(dbPath);
 db.exec('PRAGMA foreign_keys = ON;');
@@ -155,6 +161,12 @@ const contentTypeByExt = new Map([
   ['.json', 'application/json; charset=utf-8'],
   ['.md', 'text/markdown; charset=utf-8'],
   ['.png', 'image/png'],
+  ['.jpg', 'image/jpeg'],
+  ['.jpeg', 'image/jpeg'],
+  ['.gif', 'image/gif'],
+  ['.webp', 'image/webp'],
+  ['.pdf', 'application/pdf'],
+  ['.txt', 'text/plain; charset=utf-8'],
 ]);
 
 function nowISO() {
@@ -189,6 +201,84 @@ function safeResolveStatic(urlPath) {
   const fullPath = path.resolve(__dirname, '.' + requested);
   if (!fullPath.startsWith(__dirname)) return null;
   return fullPath;
+}
+
+function isValidUploadFileName(fileName) {
+  if (typeof fileName !== 'string' || !fileName) return false;
+  if (fileName === '.' || fileName === '..') return false;
+  if (fileName.includes('/') || fileName.includes('\\') || fileName.includes('\0')) return false;
+  return true;
+}
+
+function uploadUrlFor(userId, storedName) {
+  return `/uploads/${encodeURIComponent(userId)}/${encodeURIComponent(storedName)}`;
+}
+
+function safeResolveUpload(userId, storedName) {
+  const baseUploadDir = path.resolve(uploadDir);
+  const userUploadDir = path.resolve(baseUploadDir, userId);
+  if (!userUploadDir.startsWith(baseUploadDir + path.sep)) return null;
+  if (!isValidUploadFileName(storedName)) return null;
+  const fullPath = path.resolve(userUploadDir, storedName);
+  if (!fullPath.startsWith(userUploadDir + path.sep)) return null;
+  return fullPath;
+}
+
+function headersFromRequest(req) {
+  const headers = new Headers();
+  Object.entries(req.headers).forEach(([key, value]) => {
+    if (Array.isArray(value)) {
+      value.forEach((item) => headers.append(key, item));
+    } else if (value !== undefined) {
+      headers.set(key, value);
+    }
+  });
+  return headers;
+}
+
+async function parseUploadedAttachment(req) {
+  const contentType = String(req.headers['content-type'] || '');
+  if (!contentType.toLowerCase().startsWith('multipart/form-data')) {
+    const err = new Error('请使用 multipart/form-data 上传文件');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const contentLength = Number(req.headers['content-length'] || 0);
+  if (contentLength > MAX_UPLOAD_BYTES + UPLOAD_FORM_OVERHEAD_BYTES) {
+    const err = new Error('附件大小不能超过50MB');
+    err.statusCode = 413;
+    throw err;
+  }
+
+  const formRequest = new Request('http://localhost/api/uploads', {
+    method: 'POST',
+    headers: headersFromRequest(req),
+    body: Readable.toWeb(req),
+    duplex: 'half',
+  });
+  const formData = await formRequest.formData();
+  const file = formData.get('attachment');
+
+  if (!file || typeof file.arrayBuffer !== 'function' || typeof file.name !== 'string') {
+    const err = new Error('请选择要上传的附件');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (file.size > MAX_UPLOAD_BYTES) {
+    const err = new Error('附件大小不能超过50MB');
+    err.statusCode = 413;
+    throw err;
+  }
+
+  if (!isValidUploadFileName(file.name)) {
+    const err = new Error('文件名不能为空，且不能包含路径分隔符');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  return file;
 }
 
 function hashPassword(password) {
@@ -456,6 +546,27 @@ const server = createServer(async (req, res) => {
       return res.end();
     }
 
+    const uploadedFileMatch = pathname.match(/^\/uploads\/([^/]+)\/([^/]+)$/);
+    if (uploadedFileMatch && req.method === 'GET') {
+      const userId = decodeURIComponent(uploadedFileMatch[1]);
+      const storedName = decodeURIComponent(uploadedFileMatch[2]);
+      const target = safeResolveUpload(userId, storedName);
+      if (!target) return sendJson(res, 403, { error: 'Forbidden' });
+
+      try {
+        const data = await fs.readFile(target);
+        const ext = path.extname(target).toLowerCase();
+        const ctype = contentTypeByExt.get(ext) || 'application/octet-stream';
+        res.writeHead(200, {
+          'Content-Type': ctype,
+          'Cache-Control': 'private, max-age=31536000, immutable',
+        });
+        return res.end(data);
+      } catch {
+        return sendJson(res, 404, { error: 'Not found' });
+      }
+    }
+
     if (pathname === '/api/auth/register' && req.method === 'POST') {
       const raw = await readRequestBody(req);
       let body;
@@ -525,6 +636,40 @@ const server = createServer(async (req, res) => {
       const token = parseAuthToken(req);
       if (token) deleteSessionStmt.run(token);
       return sendJson(res, 200, { ok: true });
+    }
+
+    if (pathname === '/api/uploads' && req.method === 'POST') {
+      const authed = getAuthedUser(req);
+      if (!authed) return sendJson(res, 401, { error: '未登录或会话已过期' });
+
+      let file = null;
+      try {
+        file = await parseUploadedAttachment(req);
+        const target = safeResolveUpload(authed.id, file.name);
+        if (!target) return sendJson(res, 400, { error: '文件名不能为空，且不能包含路径分隔符' });
+
+        await fs.mkdir(path.dirname(target), { recursive: true });
+        await fs.writeFile(target, Buffer.from(await file.arrayBuffer()), { flag: 'wx' });
+
+        return sendJson(res, 201, {
+          attachment: {
+            url: uploadUrlFor(authed.id, file.name),
+            name: file.name,
+            size: file.size,
+          },
+        });
+      } catch (err) {
+        if (err?.code === 'EEXIST' && file) {
+          return sendJson(res, 409, {
+            error: '已存在同名附件',
+            conflict: {
+              url: uploadUrlFor(authed.id, file.name),
+              name: file.name,
+            },
+          });
+        }
+        return sendJson(res, err?.statusCode || 500, { error: err?.message || '上传附件失败' });
+      }
     }
 
     if (pathname === '/api/share/join-code' && req.method === 'POST') {
@@ -638,6 +783,9 @@ const server = createServer(async (req, res) => {
 
     const target = safeResolveStatic(pathname);
     if (!target) return sendJson(res, 403, { error: 'Forbidden' });
+    if (target === dataDir || target.startsWith(dataDir + path.sep)) {
+      return sendJson(res, 403, { error: 'Forbidden' });
+    }
 
     const ext = path.extname(target).toLowerCase();
     const ctype = contentTypeByExt.get(ext) || 'application/octet-stream';
@@ -658,7 +806,7 @@ const server = createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`TaskFlow server running at http://0.0.0.0:${PORT}`);
+server.listen(PORT, HOST, () => {
+  console.log(`TaskFlow server running at http://${HOST}:${PORT}`);
   console.log(`Database file: ${dbPath}`);
 });

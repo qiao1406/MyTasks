@@ -1050,6 +1050,33 @@ textarea {
   display: none;
 }
 
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field-label {
+  color: var(--text);
+}
+
+.attachment-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.attachment-file-btn {
+  flex: 0 0 auto;
+}
+
+.attachment-meta {
+  flex: 1 1 auto;
+  min-width: 120px;
+  overflow-wrap: anywhere;
+}
+
 .modal {
   border: none;
   border-radius: 12px;
