@@ -82,7 +82,10 @@ export async function apiFetch(path, options = {}, deps) {
   }
 
   if (!res.ok) {
-    throw new Error(body?.error || `请求失败(${res.status})`);
+    const err = new Error(body?.error || `请求失败(${res.status})`);
+    err.status = res.status;
+    err.body = body;
+    throw err;
   }
 
   return body;

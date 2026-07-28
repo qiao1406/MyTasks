@@ -326,18 +326,41 @@ function resetTaskAttachmentInput(attachment = "") {
   updateTaskAttachmentMeta();
 }
 
-async function uploadTaskAttachment(file) {
+async function uploadTaskAttachment(file, uploadName = file.name) {
   if (!file) return null;
   if (file.size > MAX_ATTACHMENT_BYTES) {
     throw new Error("附件大小不能超过50MB");
   }
 
   const body = new FormData();
-  body.append("attachment", file);
-  return request("/api/uploads", {
-    method: "POST",
-    body,
-  });
+  body.append("attachment", file, uploadName);
+  try {
+    return await request("/api/uploads", {
+      method: "POST",
+      body,
+    });
+  } catch (err) {
+    const conflict = err?.status === 409 ? err.body?.conflict : null;
+    if (conflict?.url) {
+      const conflictName = conflict.name || uploadName;
+      const useExisting = confirm(`已存在同名附件「${conflictName}」。\n\n确定：直接使用已有文件\n取消：为本次上传输入新文件名`);
+      if (useExisting) {
+        return {
+          attachment: {
+            url: conflict.url,
+            name: conflictName,
+            size: file.size,
+          },
+        };
+      }
+
+      const nextName = prompt("请输入新的附件文件名", uploadName);
+      if (!nextName) throw new Error("请重新选择附件或输入新的文件名");
+      if (nextName === conflictName) throw new Error("新文件名不能与现有附件同名");
+      return uploadTaskAttachment(file, nextName);
+    }
+    throw err;
+  }
 }
 
 /**

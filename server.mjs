@@ -203,16 +203,11 @@ function safeResolveStatic(urlPath) {
   return fullPath;
 }
 
-function sanitizeUploadFileName(fileName) {
-  const baseName = path.basename(String(fileName || 'attachment'));
-  const cleaned = baseName
-    .normalize('NFKD')
-    .replace(/[^\w. -]+/g, '')
-    .trim()
-    .replace(/\s+/g, '-')
-    .slice(0, 120);
-  if (!cleaned || cleaned === '.' || cleaned === '..') return 'attachment';
-  return cleaned;
+function isValidUploadFileName(fileName) {
+  if (typeof fileName !== 'string' || !fileName) return false;
+  if (fileName === '.' || fileName === '..') return false;
+  if (fileName.includes('/') || fileName.includes('\\') || fileName.includes('\0')) return false;
+  return true;
 }
 
 function uploadUrlFor(userId, storedName) {
@@ -223,6 +218,7 @@ function safeResolveUpload(userId, storedName) {
   const baseUploadDir = path.resolve(uploadDir);
   const userUploadDir = path.resolve(baseUploadDir, userId);
   if (!userUploadDir.startsWith(baseUploadDir + path.sep)) return null;
+  if (!isValidUploadFileName(storedName)) return null;
   const fullPath = path.resolve(userUploadDir, storedName);
   if (!fullPath.startsWith(userUploadDir + path.sep)) return null;
   return fullPath;
@@ -273,6 +269,12 @@ async function parseUploadedAttachment(req) {
   if (file.size > MAX_UPLOAD_BYTES) {
     const err = new Error('附件大小不能超过50MB');
     err.statusCode = 413;
+    throw err;
+  }
+
+  if (!isValidUploadFileName(file.name)) {
+    const err = new Error('文件名不能为空，且不能包含路径分隔符');
+    err.statusCode = 400;
     throw err;
   }
 
@@ -640,22 +642,32 @@ const server = createServer(async (req, res) => {
       const authed = getAuthedUser(req);
       if (!authed) return sendJson(res, 401, { error: '未登录或会话已过期' });
 
+      let file = null;
       try {
-        const file = await parseUploadedAttachment(req);
-        const safeName = sanitizeUploadFileName(file.name);
-        const storedName = `${Date.now()}-${randomUUID()}-${safeName}`;
-        const userUploadDir = path.join(uploadDir, authed.id);
-        await fs.mkdir(userUploadDir, { recursive: true });
-        await fs.writeFile(path.join(userUploadDir, storedName), Buffer.from(await file.arrayBuffer()));
+        file = await parseUploadedAttachment(req);
+        const target = safeResolveUpload(authed.id, file.name);
+        if (!target) return sendJson(res, 400, { error: '文件名不能为空，且不能包含路径分隔符' });
+
+        await fs.mkdir(path.dirname(target), { recursive: true });
+        await fs.writeFile(target, Buffer.from(await file.arrayBuffer()), { flag: 'wx' });
 
         return sendJson(res, 201, {
           attachment: {
-            url: uploadUrlFor(authed.id, storedName),
+            url: uploadUrlFor(authed.id, file.name),
             name: file.name,
             size: file.size,
           },
         });
       } catch (err) {
+        if (err?.code === 'EEXIST' && file) {
+          return sendJson(res, 409, {
+            error: '已存在同名附件',
+            conflict: {
+              url: uploadUrlFor(authed.id, file.name),
+              name: file.name,
+            },
+          });
+        }
         return sendJson(res, err?.statusCode || 500, { error: err?.message || '上传附件失败' });
       }
     }
