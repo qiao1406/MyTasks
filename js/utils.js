@@ -114,6 +114,15 @@ export function labelPriority(priority) {
 }
 
 /**
+ * 将任务紧急程度映射成中文标签。
+ * @param {boolean} urgent
+ * @returns {string}
+ */
+export function labelUrgency(urgent) {
+  return urgent ? "紧急" : "不紧急";
+}
+
+/**
  * 触发浏览器下载文件。
  * @param {string} name
  * @param {string} content

@@ -61,6 +61,7 @@ const el = {
   taskAssignee: document.getElementById("task-assignee"),
   taskStatus: document.getElementById("task-status"),
   taskPriority: document.getElementById("task-priority"),
+  taskUrgent: document.getElementById("task-urgent"),
   taskDue: document.getElementById("task-due"),
   taskTags: document.getElementById("task-tags"),
   taskAttachment: document.getElementById("task-attachment"),
@@ -415,6 +416,7 @@ function openTaskDialog(taskId = null, parentId = null) {
     syncTaskStatusOptions(task.status);
     el.taskStatus.value = task.status;
     el.taskPriority.value = task.priority;
+    el.taskUrgent.value = task.urgent === true ? "true" : "false";
     el.taskDue.value = task.dueDate ? task.dueDate.slice(0, 10) : "";
     el.taskTags.value = (task.tags || []).join(",");
     resetTaskAttachmentInput(task.attachment || "");
@@ -429,6 +431,7 @@ function openTaskDialog(taskId = null, parentId = null) {
     el.taskStatus.value = "todo";
     syncTaskStatusOptions("todo");
     el.taskPriority.value = "medium";
+    el.taskUrgent.value = "false";
     el.taskDue.value = "";
     el.taskTags.value = "";
     resetTaskAttachmentInput();
@@ -465,6 +468,23 @@ async function submitTaskForm(event) {
     submitButton.disabled = true;
     submitButton.textContent = "保存中...";
   }
+  
+  const payload = {
+    title: el.taskTitle.value.trim(),
+    description: el.taskDesc.value.trim(),
+    projectId: el.taskProject.value,
+    assignee: el.taskAssignee.value.trim(),
+    status: el.taskStatus.value,
+    priority: el.taskPriority.value,
+    urgent: el.taskUrgent.value === "true",
+    dueDate: el.taskDue.value ? new Date(`${el.taskDue.value}T00:00:00`).toISOString() : null,
+    tags: el.taskTags.value
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean),
+    attachment: el.taskAttachment.value.trim(),
+    parentId: el.taskParentId.value || null,
+  };
 
   try {
     const selectedAttachment = el.taskAttachmentFile.files?.[0] || null;
