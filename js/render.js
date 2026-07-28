@@ -471,12 +471,20 @@ export function createRenderer(deps) {
 
       el.detailEmpty.style.display = "none";
       const project = taskService.projectById(task.projectId);
+      const parentTask = task.parentId ? taskService.taskById(task.parentId) : null;
       const directChildren = taskService.childrenOf(task.id);
       const comments = Array.isArray(task.comments) ? task.comments : [];
       const box = document.createElement("div");
       const detailStatusActions = buildDetailStatusActions(task);
       const completedTime = task.status === "done"
         ? `<p><strong>完成时间:</strong> ${escapeHtml(formatDateTime(task.completedAt, "未记录"))}</p>`
+        : "";
+      const parentInfo = task.parentId
+        ? `<p class="detail-parent-line"><strong>父任务:</strong> ${
+            parentTask
+              ? `<button class="detail-parent-open" type="button" data-action="open-parent-task" data-parent-task-id="${parentTask.id}">${escapeHtml(parentTask.title)}</button>`
+              : "已删除或不可用"
+          }</p>`
         : "";
 
       const childList = directChildren.length
@@ -528,6 +536,7 @@ export function createRenderer(deps) {
           <p><strong>紧急程度:</strong> ${labelUrgency(task.urgent === true)}</p>
           <p><strong>优先级:</strong> ${labelPriority(task.priority)}</p>
           <p><strong>项目:</strong> ${escapeHtml(project ? project.name : "未知")}</p>
+          ${parentInfo}
           <p><strong>截止日期:</strong> ${formatDate(task.dueDate)}</p>
           <p><strong>创建时间:</strong> ${escapeHtml(formatDateTime(task.createdAt))}</p>
           ${completedTime}
@@ -555,6 +564,13 @@ export function createRenderer(deps) {
       el.detailContent.appendChild(box);
       document.getElementById("d-edit-task").addEventListener("click", () => openTaskDialog(task.id));
       document.getElementById("d-subtask").addEventListener("click", () => openTaskDialog(null, task.id));
+      box.querySelector("[data-action=\"open-parent-task\"]")?.addEventListener("click", (event) => {
+        const parentTaskId = event.currentTarget.dataset.parentTaskId;
+        if (!parentTaskId) return;
+        setSelectedTaskId(parentTaskId);
+        setSelectedProjectIdForDetail(null);
+        renderDetail();
+      });
       box.querySelectorAll("[data-action='detail-status']").forEach((button) => {
         button.addEventListener("click", () => {
           if (taskService.updateTaskStatus(task.id, button.dataset.statusTarget)) renderAll();
