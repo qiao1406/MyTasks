@@ -288,6 +288,64 @@ export function createRenderer(deps) {
   }
 
   /**
+   * 渲染看板中的极简任务行。
+   * @param {any} task
+   */
+  function buildKanbanTaskRow(task) {
+    const row = document.createElement("article");
+    const doneClass = task.status === "done" ? "done" : "";
+    const parent = task.parentId ? taskService.taskById(task.parentId) : null;
+    const parentLink = parent
+      ? `
+        <button class="task-parent-link" type="button" data-action="open-parent" data-parent-id="${escapeHtml(parent.id)}" title="查看父任务：${escapeHtml(parent.title)}">
+          父任务: ${escapeHtml(parent.title)}
+        </button>
+      `
+      : "";
+
+    row.className = "task-row task-board-card task-board-simple";
+    row.draggable = true;
+    row.dataset.id = task.id;
+    row.dataset.level = "0";
+    row.dataset.priority = task.priority;
+    row.dataset.urgent = task.urgent === true ? "true" : "false";
+    row.dataset.visualStatus = visualStatus(task);
+    row.innerHTML = `
+      <input class="subtask-checkbox task-board-check" type="checkbox" data-action="toggle" ${task.status === "done" ? "checked" : ""} aria-label="切换任务完成状态" />
+      <div class="task-board-simple-content">
+        <div class="task-title ${doneClass}">${escapeHtml(task.title)}</div>
+        ${parentLink ? `<div class="task-parent-ref">${parentLink}</div>` : ""}
+      </div>
+    `;
+
+    row.addEventListener("click", (event) => {
+      const control = event.target.closest("button, input");
+      if (control) {
+        const action = control.dataset.action;
+        if (action === "toggle") {
+          taskService.toggleTask(task.id);
+          renderAll();
+        } else if (action === "open-parent") {
+          const parentId = control.dataset.parentId;
+          if (parentId) {
+            setSelectedTaskId(parentId);
+            setSelectedProjectIdForDetail(null);
+            renderDetail();
+          }
+        }
+        return;
+      }
+
+      setSelectedTaskId(task.id);
+      setSelectedProjectIdForDetail(null);
+      renderDetail();
+    });
+
+    wireFallbackTaskDragEvents(row);
+    return row;
+  }
+
+  /**
    * 构建任务状态切换按钮，确保已完成任务不能直接挂起。
    * @param {any} task
    */
@@ -408,7 +466,7 @@ export function createRenderer(deps) {
         </div>
       `;
       if (items.length) {
-        items.forEach((task) => col.appendChild(buildTaskRow(task, 0, { forceCard: true, showParentLink: true, draggable: true })));
+        items.forEach((task) => col.appendChild(buildKanbanTaskRow(task)));
       } else {
         const empty = document.createElement("p");
         empty.className = "small kanban-empty";

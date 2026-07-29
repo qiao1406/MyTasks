@@ -635,6 +635,52 @@ textarea {
   border-left-color: color-mix(in srgb, var(--primary) 55%, transparent);
 }
 
+.task-row.task-board-simple,
+.task-row.task-board-simple[data-visual-status="todo"],
+.task-row.task-board-simple[data-visual-status="overdue"],
+.task-row.task-board-simple[data-visual-status="suspended"],
+.task-row.task-board-simple[data-visual-status="done"] {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  border-left-width: 1px;
+  border-left-color: var(--border);
+  background: var(--surface);
+  box-shadow: none;
+  padding: 10px;
+}
+
+.task-board-simple:hover {
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--border));
+  background: color-mix(in srgb, var(--surface) 94%, var(--primary-soft));
+}
+
+.task-board-simple-content {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.task-board-check {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+}
+
+.task-board-simple .task-title {
+  line-height: 1.35;
+}
+
+.task-board-simple .task-parent-ref {
+  margin-top: 0;
+}
+
+.task-board-simple .task-parent-link {
+  padding: 2px 6px;
+}
+
 .task-row.dragging {
   opacity: 0.5;
 }
