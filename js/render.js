@@ -127,21 +127,27 @@ export function createRenderer(deps) {
    * 渲染单行任务卡片。
    * @param {any} task
    * @param {number} [level=0]
+   * @param {{ forceCard?: boolean, showParentLink?: boolean, draggable?: boolean }} [options]
    */
-  function buildTaskRow(task, level = 0) {
+  function buildTaskRow(task, level = 0, options = {}) {
     const isTopLevel = level === 0;
-    const rowClass = isTopLevel ? "task-row task-top-level" : "task-row task-child-level subtask-list-item";
+    const isCardMode = options.forceCard === true || isTopLevel;
+    const rowClass = options.forceCard
+      ? "task-row task-board-card"
+      : isTopLevel
+        ? "task-row task-top-level"
+        : "task-row task-child-level subtask-list-item";
     const usesManualTopLevelSort = getState().settings.topLevelSort?.by === "manual";
     const row = document.createElement("article");
 
     row.className = rowClass;
-    row.draggable = !isTopLevel || usesManualTopLevelSort;
+    row.draggable = options.draggable ?? (!isTopLevel || usesManualTopLevelSort);
     row.dataset.id = task.id;
-    row.dataset.level = String(level);
+    row.dataset.level = options.forceCard ? "0" : String(level);
     row.dataset.priority = task.priority;
     row.dataset.urgent = task.urgent === true ? "true" : "false";
     row.dataset.visualStatus = visualStatus(task);
-    if (isTopLevel && !usesManualTopLevelSort) {
+    if (!options.forceCard && isTopLevel && !usesManualTopLevelSort) {
       row.dataset.dragDisabledReason = "sorted";
     }
 
@@ -151,6 +157,16 @@ export function createRenderer(deps) {
     const statusText = vStatus === "overdue" ? "已延期" : labelStatus(task.status);
     const description = (task.description || "").trim();
     const statusActionButtons = buildStatusActionButtons(task);
+    const parent = task.parentId ? taskService.taskById(task.parentId) : null;
+    const parentLink = options.showParentLink && parent
+      ? `
+        <div class="task-parent-ref">
+          <button class="task-parent-link" type="button" data-action="open-parent" data-parent-id="${escapeHtml(parent.id)}" title="查看父任务：${escapeHtml(parent.title)}">
+            父任务: ${escapeHtml(parent.title)}
+          </button>
+        </div>
+      `
+      : "";
 
     const progress = taskService.directSubtaskProgress(task.id);
     const expanded = isExpanded(task.id);
@@ -180,12 +196,13 @@ export function createRenderer(deps) {
       <button class="btn btn-danger" data-action="delete">删除</button>
     `;
 
-    row.innerHTML = isTopLevel
+    row.innerHTML = isCardMode
       ? `
       <div class="task-head">
         <div class="task-title ${doneClass}">${escapeHtml(task.title)}</div>
         <div class="small task-status-badge task-status-${vStatus}">${statusText}</div>
       </div>
+      ${parentLink}
       ${description ? `<div class="task-desc ${doneClass}">${escapeHtml(description)}</div>` : ""}
       <div class="task-sub">
         <span>紧急程度: ${labelUrgency(task.urgent === true)}</span>
@@ -244,6 +261,13 @@ export function createRenderer(deps) {
           onDeleteTask(task.id);
         } else if (action === "expand-mode") {
           setSubtaskExpandMode(task.id, control.dataset.expandMode === "open" ? "open" : "all");
+        } else if (action === "open-parent") {
+          const parentId = control.dataset.parentId;
+          if (parentId) {
+            setSelectedTaskId(parentId);
+            setSelectedProjectIdForDetail(null);
+            renderDetail();
+          }
         }
         return;
       }
@@ -261,6 +285,99 @@ export function createRenderer(deps) {
 
     wireFallbackTaskDragEvents(row);
     return row;
+  }
+
+  /**
+   * 渲染看板中的极简任务行。
+   * @param {any} task
+   * @param {number} [level=0]
+   */
+  function buildKanbanTaskRow(task, level = 0) {
+    const row = document.createElement("article");
+    const doneClass = task.status === "done" ? "done" : "";
+    const parent = task.parentId ? taskService.taskById(task.parentId) : null;
+    const parentLink = parent
+      ? `
+        <button class="task-parent-link" type="button" data-action="open-parent" data-parent-id="${escapeHtml(parent.id)}" title="查看父任务：${escapeHtml(parent.title)}">
+          父任务: ${escapeHtml(parent.title)}
+        </button>
+      `
+      : "";
+
+    row.className = "task-row task-board-card task-board-simple";
+    row.draggable = true;
+    row.dataset.id = task.id;
+    row.dataset.level = String(Math.min(level, 6));
+    row.dataset.priority = task.priority;
+    row.dataset.urgent = task.urgent === true ? "true" : "false";
+    row.dataset.visualStatus = visualStatus(task);
+    row.innerHTML = `
+      <input class="subtask-checkbox task-board-check" type="checkbox" data-action="toggle" ${task.status === "done" ? "checked" : ""} aria-label="切换任务完成状态" />
+      <div class="task-board-simple-content">
+        <div class="task-title ${doneClass}">${escapeHtml(task.title)}</div>
+        ${parentLink ? `<div class="task-parent-ref">${parentLink}</div>` : ""}
+      </div>
+    `;
+
+    row.addEventListener("click", (event) => {
+      const control = event.target.closest("button, input");
+      if (control) {
+        const action = control.dataset.action;
+        if (action === "toggle") {
+          taskService.toggleTask(task.id);
+          renderAll();
+        } else if (action === "open-parent") {
+          const parentId = control.dataset.parentId;
+          if (parentId) {
+            setSelectedTaskId(parentId);
+            setSelectedProjectIdForDetail(null);
+            renderDetail();
+          }
+        }
+        return;
+      }
+
+      setSelectedTaskId(task.id);
+      setSelectedProjectIdForDetail(null);
+      renderDetail();
+    });
+
+    wireFallbackTaskDragEvents(row);
+    return row;
+  }
+
+  /**
+   * 看板分区内按父子关系排列；父任务不在本分区时保持当前任务为根节点。
+   * @param {Array<any>} items
+   * @returns {Array<{ task: any, level: number }>}
+   */
+  function arrangeKanbanItemsByHierarchy(items) {
+    const itemIds = new Set(items.map((task) => task.id));
+    const childrenByParent = new Map();
+    const roots = [];
+
+    items.forEach((task) => {
+      if (task.parentId && itemIds.has(task.parentId)) {
+        if (!childrenByParent.has(task.parentId)) childrenByParent.set(task.parentId, []);
+        childrenByParent.get(task.parentId).push(task);
+      } else {
+        roots.push(task);
+      }
+    });
+
+    const arranged = [];
+    const visited = new Set();
+    const appendTree = (task, level) => {
+      if (visited.has(task.id)) return;
+      visited.add(task.id);
+      arranged.push({ task, level });
+      (childrenByParent.get(task.id) || []).forEach((child) => appendTree(child, level + 1));
+    };
+
+    roots.forEach((task) => appendTree(task, 0));
+    items.forEach((task) => appendTree(task, 0));
+
+    return arranged;
   }
 
   /**
@@ -369,7 +486,6 @@ export function createRenderer(deps) {
       col.className = "kanban-col";
       col.dataset.urgent = quadrant.urgent ? "true" : "false";
       col.dataset.priorityGroup = quadrant.priorityGroup;
-      col.innerHTML = `<h4>${quadrant.title}</h4>`;
 
       const items = taskService.sortTasksForBoard(
         filtered.filter((task) => {
@@ -378,7 +494,20 @@ export function createRenderer(deps) {
           return (task.urgent === true) === quadrant.urgent && matchesPriorityGroup;
         })
       );
-      items.forEach((task) => col.appendChild(buildTaskRow(task, task.parentId ? 1 : 0)));
+      col.innerHTML = `
+        <div class="kanban-col-head">
+          <h4>${quadrant.title}</h4>
+          <span class="kanban-count">${items.length}</span>
+        </div>
+      `;
+      if (items.length) {
+        arrangeKanbanItemsByHierarchy(items).forEach(({ task, level }) => col.appendChild(buildKanbanTaskRow(task, level)));
+      } else {
+        const empty = document.createElement("p");
+        empty.className = "small kanban-empty";
+        empty.textContent = "暂无任务";
+        col.appendChild(empty);
+      }
 
       col.addEventListener("dragover", (event) => {
         event.preventDefault();
