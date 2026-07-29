@@ -681,6 +681,30 @@ textarea {
   padding: 2px 6px;
 }
 
+.task-row.task-board-simple[data-level="1"] {
+  margin-left: 18px;
+}
+
+.task-row.task-board-simple[data-level="2"] {
+  margin-left: 36px;
+}
+
+.task-row.task-board-simple[data-level="3"] {
+  margin-left: 54px;
+}
+
+.task-row.task-board-simple[data-level="4"] {
+  margin-left: 72px;
+}
+
+.task-row.task-board-simple[data-level="5"] {
+  margin-left: 90px;
+}
+
+.task-row.task-board-simple[data-level="6"] {
+  margin-left: 108px;
+}
+
 .task-row.dragging {
   opacity: 0.5;
 }

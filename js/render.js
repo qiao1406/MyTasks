@@ -290,8 +290,9 @@ export function createRenderer(deps) {
   /**
    * 渲染看板中的极简任务行。
    * @param {any} task
+   * @param {number} [level=0]
    */
-  function buildKanbanTaskRow(task) {
+  function buildKanbanTaskRow(task, level = 0) {
     const row = document.createElement("article");
     const doneClass = task.status === "done" ? "done" : "";
     const parent = task.parentId ? taskService.taskById(task.parentId) : null;
@@ -306,7 +307,7 @@ export function createRenderer(deps) {
     row.className = "task-row task-board-card task-board-simple";
     row.draggable = true;
     row.dataset.id = task.id;
-    row.dataset.level = "0";
+    row.dataset.level = String(Math.min(level, 6));
     row.dataset.priority = task.priority;
     row.dataset.urgent = task.urgent === true ? "true" : "false";
     row.dataset.visualStatus = visualStatus(task);
@@ -343,6 +344,40 @@ export function createRenderer(deps) {
 
     wireFallbackTaskDragEvents(row);
     return row;
+  }
+
+  /**
+   * 看板分区内按父子关系排列；父任务不在本分区时保持当前任务为根节点。
+   * @param {Array<any>} items
+   * @returns {Array<{ task: any, level: number }>}
+   */
+  function arrangeKanbanItemsByHierarchy(items) {
+    const itemIds = new Set(items.map((task) => task.id));
+    const childrenByParent = new Map();
+    const roots = [];
+
+    items.forEach((task) => {
+      if (task.parentId && itemIds.has(task.parentId)) {
+        if (!childrenByParent.has(task.parentId)) childrenByParent.set(task.parentId, []);
+        childrenByParent.get(task.parentId).push(task);
+      } else {
+        roots.push(task);
+      }
+    });
+
+    const arranged = [];
+    const visited = new Set();
+    const appendTree = (task, level) => {
+      if (visited.has(task.id)) return;
+      visited.add(task.id);
+      arranged.push({ task, level });
+      (childrenByParent.get(task.id) || []).forEach((child) => appendTree(child, level + 1));
+    };
+
+    roots.forEach((task) => appendTree(task, 0));
+    items.forEach((task) => appendTree(task, 0));
+
+    return arranged;
   }
 
   /**
@@ -466,7 +501,7 @@ export function createRenderer(deps) {
         </div>
       `;
       if (items.length) {
-        items.forEach((task) => col.appendChild(buildKanbanTaskRow(task)));
+        arrangeKanbanItemsByHierarchy(items).forEach(({ task, level }) => col.appendChild(buildKanbanTaskRow(task, level)));
       } else {
         const empty = document.createElement("p");
         empty.className = "small kanban-empty";
