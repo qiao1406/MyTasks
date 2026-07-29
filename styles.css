@@ -961,6 +961,28 @@ textarea {
   color: var(--muted);
 }
 
+.detail-parent-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.detail-parent-open {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--primary-strong);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+  text-align: left;
+}
+
+.detail-parent-open:hover {
+  text-decoration: underline;
+}
+
 .detail-comments h4 {
   margin: 0 0 10px;
 }
